@@ -1,0 +1,14 @@
+\begin{thebibliography}{1}
+
+\bibitem{ZUMID16}
+Benjamin Ummenhofer, Huizhong Zhou, Jonas Uhrig, Nikolaus Mayer, Eddy Ilg,
+  Alexey Dosovitskiy, and Thomas Brox.
+\newblock Demon: Depth and motion network for learning monocular stereo.
+\newblock {\em CoRR}, abs/1612.02401, 2016.
+
+\bibitem{zhou2017unsupervised}
+Tinghui Zhou, Matthew Brown, Noah Snavely, and David~G. Lowe.
+\newblock Unsupervised learning of depth and ego-motion from video.
+\newblock In {\em CVPR}, 2017.
+
+\end{thebibliography}

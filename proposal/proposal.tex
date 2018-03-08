@@ -1,0 +1,75 @@
+% ETH Zurich  - 3D Photography 2015
+% http://www.cvg.ethz.ch/teaching/3dphoto/
+% Template for project proposals
+
+\documentclass[11pt,a4paper,oneside,onecolumn]{IEEEtran}
+\usepackage{graphicx}
+% Enter the project title and your project supervisor here
+\newcommand{\ProjectTitle}{Deep Relative Pose Estimation for Stereo Camera}
+\newcommand{\ProjectSupervisor}{Zhaopeng Cui}
+\newcommand{\DateOfReport}{March 9, 2018}
+
+% Enter the team members' names and path to their photos. Comment / uncomment related definitions if the number of members are different than 2.
+% Including photographs are optional. Photos are there to help us to evaluate your group more effectively. If you wish not to include your photos, please comment the following line.
+\newcommand{\PutPhotos}{}
+% Please include a clear photo of each member. (use pdf or png files for Latex to embed them in the document well)
+\newcommand{\memberone}{Noah Isaak}
+\newcommand{\memberonepicture}{pic2.png}
+\newcommand{\membertwo}{Max Huerlimann}
+\newcommand{\membertwopicture}{pic2.png}
+% \newcommand{\memberfour}{Member Name}
+% \newcommand{\memberfourpicture}{pic1.png}
+% \newcommand{\memberfive}{Member Name}
+% \newcommand{\memberfivepicture}{pic2.png}
+
+
+%%%% DO NOT EDIT THE PART BELOW %%%%
+\title{\ProjectTitle}
+\author{3D Vision Project Proposal\\Supervised by: \ProjectSupervisor\\ \DateOfReport}
+\begin{document}
+\maketitle
+\vspace{-1.5cm}\section*{Group Members}\vspace{0.3cm}
+\begin{center}\begin{minipage}{\linewidth}\begin{center}
+\begin{minipage}{3 cm}\begin{center}\memberone\ifdefined\PutPhotos\\\vspace{0.2cm}\includegraphics[height=3cm]{\memberonepicture}\fi\end{center}\end{minipage}
+\ifdefined\membertwo\begin{minipage}{3 cm}\begin{center}\membertwo\ifdefined\PutPhotos\\\vspace{0.2cm}\includegraphics[height=3cm]{\membertwopicture}\fi\end{center}\end{minipage}\fi
+\ifdefined\memberthree\begin{minipage}{3 cm}\begin{center}\memberthree\ifdefined\PutPhotos\\\vspace{0.2cm}\includegraphics[height=3cm]{\memberthreepicture}\fi\end{center}\end{minipage}\fi
+\ifdefined\memberfour\begin{minipage}{3 cm}\begin{center}\memberfour\ifdefined\PutPhotos\\\vspace{0.2cm}\includegraphics[height=3cm]{\memberfourpicture}\fi\end{center}\end{minipage}\fi
+\ifdefined\memberfive\begin{minipage}{3 cm}\begin{center}\memberfive\ifdefined\PutPhotos\\\vspace{0.2cm}\includegraphics[height=3cm]{\memberfivepicture}\fi\end{center}\end{minipage}\fi
+\end{center}\end{minipage}\end{center}\vspace{0.3cm}
+%%%% END OF PROTECTED LINES %%%%
+
+
+%%%% BEGIN WRITING THE DOCUMENT HERE %%%%
+
+\section{Description of the project}
+
+This project aims at designing a neural network which can can estimate the depth and relative pose through pictures attained with a stereo camera. It is inspired by the work done with an unsupervised network for single-view monocular cameras \cite{zhou2017unsupervised}. The depth estimation has been shown to work well with a stereo configuration \cite{ZUMID16}. For training the KITTI dataset will be used, which provides scenes captured with stereo cameras. If the time allows, there will be attempted to fit a mask as well.
+
+\section{Work packages and timeline}
+
+To get familiar with the recent work, at first familiarization with the state-of-the-art algorithms will take place. Then, adaption of the algorithm used in \cite{zhou2017unsupervised} to a stereo camera, using DispNet \cite{ZUMID16} will be done. Training of the network through the KITTI dataset (and possibly others) will be done, preferably without groundtruth in an unsupervised manner.
+
+Detailed descriptions of work packages you planned, their outcomes, the responsible group member and estimated timeline. Specify the challenges that will be tackled and considered solutions with possible alternatives, citing related documents if applicable. Mention the platform (Android, PC etc.) and the language (C++ etc.) you plan to use.
+
+\section{Outcomes and Demonstration}
+
+The main expected outcome is an improvement of depth perception with respect to the single view monocular algorithm. This could lead to a general improving of identification of relative pose estimation and possibly semantics. This can be demonstrated on available datasets or possibly live, if there is a stereo camera available.
+Give detailed information on the expected outcome of your project and the experiments you plan to test your implementation. If applicable, describe the online or offline demo you plan to present at the end of the semester.
+
+
+\vspace{1cm}
+\textbf{Instructions:}
+
+\begin{itemize}
+\item The document should not exceed two pages including the references.
+\item Please name the document \textbf{3DVision\_Proposal\_Surname1\_Surname2.pdf} and upload it via the moodle.
+\end{itemize}
+
+
+
+{%\singlespace
+{\small
+\bibliography{refs}
+\bibliographystyle{plain}}}
+
+\end{document}
