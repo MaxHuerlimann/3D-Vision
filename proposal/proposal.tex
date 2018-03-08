@@ -43,18 +43,16 @@
 
 \section{Description of the project}
 
-This project aims at designing a neural network which can can estimate the depth and relative pose through pictures attained with a stereo camera. It is inspired by the work done with an unsupervised network for single-view monocular cameras \cite{zhou2017unsupervised}. The depth estimation has been shown to work well with a stereo configuration \cite{ZUMID16}. For training the KITTI dataset will be used, which provides scenes captured with stereo cameras. If the time allows, there will be attempted to fit a mask as well.
+This project aims at designing a neural network which can can estimate the depth and relative pose through pictures attained with a stereo camera. It is inspired by the work done with an unsupervised network for single-view monocular cameras \cite{zhou2017unsupervised}. The depth estimation has been shown to work well with a stereo configuration \cite{ZUMID16}. For training the KITTI dataset will be used, which provides scenes captured with stereo cameras. If the time allows, there will be attempted to fit an explanatory mask as well.
 
 \section{Work packages and timeline}
 
-To get familiar with the recent work, at first familiarization with the state-of-the-art algorithms will take place. Then, adaption of the algorithm used in \cite{zhou2017unsupervised} to a stereo camera, using DispNet \cite{ZUMID16} will be done. Training of the network through the KITTI dataset (and possibly others) will be done, preferably without groundtruth in an unsupervised manner.
+To get familiar with the recent work, at first familiarization with the state-of-the-art algorithms will take place. Then, the depth estimation algorithm used in \cite{zhou2017unsupervised} to a stereo camera will be adapted using the DeMoN algorithm\cite{ZUMID16}. If the DeMoN algorithm does not perform well enough, other or maybe even an own network structure would have to be found. The network will be trained through the KITTI dataset (and possibly others), preferably in an unsupervised manner. If performance is unsatisfactory, supervised learning will be experimented with. The last step will be to validate the results on available datasets. If the time allows, the topic of semantics will be tackled. An explanatory mask could be fitted, using the depth and pose information from the other networks as input. All the code will be implemented through Python on a PC. The TensorFlow framework will be used.
 
-Detailed descriptions of work packages you planned, their outcomes, the responsible group member and estimated timeline. Specify the challenges that will be tackled and considered solutions with possible alternatives, citing related documents if applicable. Mention the platform (Android, PC etc.) and the language (C++ etc.) you plan to use.
 
 \section{Outcomes and Demonstration}
 
 The main expected outcome is an improvement of depth perception with respect to the single view monocular algorithm. This could lead to a general improving of identification of relative pose estimation and possibly semantics. This can be demonstrated on available datasets or possibly live, if there is a stereo camera available.
-Give detailed information on the expected outcome of your project and the experiments you plan to test your implementation. If applicable, describe the online or offline demo you plan to present at the end of the semester.
 
 
 \vspace{1cm}
