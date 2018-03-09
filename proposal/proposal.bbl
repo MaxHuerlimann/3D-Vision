@@ -1,5 +1,13 @@
 \begin{thebibliography}{1}
 
+\bibitem{MIFDB16}
+N.Mayer, E.Ilg, P.H{\"a}usser, P.Fischer, D.Cremers, A.Dosovitskiy, and T.Brox.
+\newblock A large dataset to train convolutional networks for disparity,
+  optical flow, and scene flow estimation.
+\newblock In {\em IEEE International Conference on Computer Vision and Pattern
+  Recognition (CVPR)}, 2016.
+\newblock arXiv:1512.02134.
+
 \bibitem{ZUMID16}
 Benjamin Ummenhofer, Huizhong Zhou, Jonas Uhrig, Nikolaus Mayer, Eddy Ilg,
   Alexey Dosovitskiy, and Thomas Brox.

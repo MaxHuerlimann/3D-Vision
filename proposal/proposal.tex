@@ -4,6 +4,7 @@
 
 \documentclass[11pt,a4paper,oneside,onecolumn]{IEEEtran}
 \usepackage{graphicx}
+\usepackage{caption}
 % Enter the project title and your project supervisor here
 \newcommand{\ProjectTitle}{Deep Relative Pose Estimation for Stereo Camera}
 \newcommand{\ProjectSupervisor}{Zhaopeng Cui}
@@ -43,16 +44,36 @@
 
 \section{Description of the project}
 
-This project aims at designing an end-to-end neural network which can can estimate the depth and relative pose between consecutive frames of a stereo camera. It is inspired by the work done with an unsupervised network for single-view monocular cameras \cite{zhou2017unsupervised}. In \cite{zhou2017unsupervised}, the depth is directly learned from a single image, and thus quite noisy. It also lacks of generalization to unknown scenes. With a pair of stereo images, we can get more accurate depth information, which should be able to further improve the pose estimation. What's more, it has better generalization. Given the two pairs of stereo images as input, our network will contain two parts: depth estimation and pose regression. We will adopt some existing work for depth estimation, and mainly focus on the design of the pose estimation.  The depth estimation has been shown to work well with a stereo configuration \cite{ZUMID16}. For training the KITTI dataset will be used, which provides scenes captured with stereo cameras. If the time allows, there will be attempted to fit an explanatory mask as well.
+This project aims at designing an end-to-end neural network which can can estimate the depth and relative pose between consecutive frames of a stereo camera. It is inspired by the work done with an unsupervised network for single-view monocular cameras \cite{zhou2017unsupervised}. Here the depth is directly learned from a single image, and thus quite noisy and lacks of generalization to unknown scenes. With a pair of stereo images, we can get more accurate depth information, which should be able to further improve the pose estimation. What's more, it has better generalization. Given the two pairs of stereo images as input, our network will contain two parts: depth estimation and pose regression. We will adopt some existing work for depth estimation, and mainly focus on the design of the pose estimation.  The depth estimation has been shown to work well with a stereo configuration \cite{ZUMID16}. For training the KITTI dataset will be used, which provides scenes captured with stereo cameras. If the time allows, there will be attempted to fit an explanatory mask as well.
 
 \section{Work packages and timeline}
 
-To get familiar with the recent work, at first familiarization with the state-of-the-art algorithms will take place. Then we will learn and  adapted the  deep stereo method [Dispnet] as the first part of our pipeline. After that, we will focus on the design of the subnetwork for pose estimation. The network will be trained through the KITTI dataset (and possibly others), preferably in an unsupervised manner. If performance is unsatisfactory, supervised learning will be experimented with. The last step will be to validate the results on available datasets. If the time allows, the topic of semantics will be tackled. An explanatory mask could be learned simultaneously to differentiate the moving objects and improve the robustness of the method. All the code will be implemented through Python on a PC and the TensorFlow framework will be used.
+To get familiar with the recent work, at first familiarization with the state-of-the-art algorithms will take place. The Dispnet method, developed by researchers at the university of Freiburg \cite{MIFDB16}, will be implemented on our computers and played around with. Then we will adapted this  deep stereo method as the first part of our pipeline. After that, we will focus on the design of the subnetwork for pose estimation by adapting the network done by Zhou \cite{zhou2017unsupervised}. The network will be trained through the KITTI dataset (and possibly others), preferably in an unsupervised manner. If performance is unsatisfactory, supervised learning will be experimented with. The last step will be to validate the results on available datasets. If the time allows, the topic of semantics will be tackled. An explanatory mask could be learned simultaneously to differentiate the moving objects and improve the robustness of the method. All the code will be implemented through Python on a PC and the TensorFlow framework will be used. The intended timetable can be seen in table \ref{tbl: timetable}.
+
+\vspace{3pt}
+
+\begin{table}
+\centering
+\caption{Timetable}
+\label{tbl: timetable}
+\begin{tabular}{ | l | l | l | }
+    \hline
+    \textbf{Workpackage} & \textbf{Timeframe} & \textbf{Supervised by} \\ \hline
+    Getting familiar with existing code & 12/03 - 17/03 & Max \& Noah \\ \hline
+    Adaptation of Dispnet & 18/03 - 21/03 & Noah \\ \hline
+    Design of pose estimation network & 21/03 - 07/04 & Max \\ \hline
+    Training of the network on KITTI dataset & 08/04 - 01/05 & Max \& Noah \\ \hline
+    Validation of network & 02/05 - 15/05 & Max \& Noah \\ \hline
+\end{tabular}
+\\[10pt]
+
+\end{table}
+
 
 
 \section{Outcomes and Demonstration}
 
-The main expected outcome is an improvement of depth perception with respect to the single view monocular algorithm. This could lead to a general improving of relative pose estimation and possibly semantics. This can be demonstrated on available datasets or possibly live, if there is a stereo camera available.
+The main expected outcome is an improvement of depth perception with respect to the single view monocular algorithm. This could lead to a general improving of relative pose estimation and possibly semantics. This can be demonstrated on available datasets or possibly live, if there is a stereo camera available. To be able to measure improvement, either the existing code from \cite{zhou2017unsupervised} can be used to create reference data from new datasets or existing data from the paper itself can be used as reference.
 
 
 
