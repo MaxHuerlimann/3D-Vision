@@ -15,6 +15,9 @@ class SfMLearner(object):
         pass
     
     def build_train_graph(self):
+        # Reset graph so can be called several times (debugging)
+        tf.reset_default_graph()
+        print('Train graph is getting built')
         opt = self.opt
         loader = DataLoader(opt.dataset_dir,
                             opt.batch_size,
@@ -23,24 +26,35 @@ class SfMLearner(object):
                             opt.num_source,
                             opt.num_scales)
         with tf.name_scope("data_loading"):
-            tgt_image, src_image_stack, intrinsics = loader.load_train_batch()
-            tgt_image = self.preprocess_image(tgt_image)
-            src_image_stack = self.preprocess_image(src_image_stack)
+            print('Data is being loaded')
+            tgt_image_2, tgt_image_3, src_image_stack_2, src_image_stack_3, intrinsics_2, intrinsics_3 = loader.load_train_batch()
+            # Preprocess left images
+            tgt_image_2 = self.preprocess_image(tgt_image_2)
+            src_image_stack_2 = self.preprocess_image(src_image_stack_2)
+            # Preprocess right images
+            tgt_image_3 = self.preprocess_image(tgt_image_3)
+            src_image_stack_3 = self.preprocess_image(src_image_stack_3)
+            print(tgt_image_2.get_shape())
 
         # Here Stereo DispNet gets included
         with tf.name_scope("depth_prediction"):
             print('Depth prediction')
-            pred_disp, depth_net_endpoints = build_main_graph(left_image_batch, right_image_batch, is_corr=True, corr_type="tf")
+
+            pred_disp, depth_net_endpoints = build_main_graph(tgt_image_2, tgt_image_3, is_corr=True, corr_type="tf")
             pred_depth = [1./d for d in pred_disp]
 
         with tf.name_scope("pose_and_explainability_prediction"):
+            print('Pose prediction started')
             pred_poses, pred_exp_logits, pose_exp_net_endpoints = \
-                pose_exp_net(tgt_image,
-                             src_image_stack, 
+                pose_exp_net(tgt_image_2,
+                             src_image_stack_2, 
                              do_exp=(opt.explain_reg_weight > 0),
                              is_training=True)
+            print('Pose prediction finished')
+            
 
         with tf.name_scope("compute_loss"):
+            print('Loss computation started')
             pixel_loss = 0
             exp_loss = 0
             smooth_loss = 0
@@ -56,9 +70,9 @@ class SfMLearner(object):
                     ref_exp_mask = self.get_reference_explain_mask(s)
                 # Scale the source and target images for computing loss at the 
                 # according scale.
-                curr_tgt_image = tf.image.resize_area(tgt_image, 
+                curr_tgt_image = tf.image.resize_area(tgt_image_2, 
                     [int(opt.img_height/(2**s)), int(opt.img_width/(2**s))])                
-                curr_src_image_stack = tf.image.resize_area(src_image_stack, 
+                curr_src_image_stack = tf.image.resize_area(src_image_stack_2, 
                     [int(opt.img_height/(2**s)), int(opt.img_width/(2**s))])
 
                 if opt.smooth_weight > 0:
@@ -71,7 +85,7 @@ class SfMLearner(object):
                         curr_src_image_stack[:,:,:,3*i:3*(i+1)], 
                         tf.squeeze(pred_depth[s], axis=3), 
                         pred_poses[:,i,:], 
-                        intrinsics[:,s,:,:])
+                        intrinsics_2[:,s,:,:])
                     curr_proj_error = tf.abs(curr_proj_image - curr_tgt_image)
                     # Cross-entropy loss as regularization for the 
                     # explainability prediction

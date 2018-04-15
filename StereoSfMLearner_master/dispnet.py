@@ -88,7 +88,7 @@ def conv2d(x, kernel_shape, strides=1, relu=True, padding='SAME'):
     W = tf.get_variable("weights", kernel_shape, initializer=initializer)
     tf.add_to_collection(tf.GraphKeys.WEIGHTS, W)
     b = tf.get_variable("biases", kernel_shape[3], initializer=tf.constant_initializer(0.0))
-    with tf.name_scope("conv"):
+    with tf.name_scope("conv"):                
         x = tf.nn.conv2d(x, W, strides=[1, strides, strides, 1], padding=padding)
         x = tf.nn.bias_add(x, b)
         tf.summary.histogram("W", W)
@@ -136,7 +136,13 @@ def upsampling_block(bottom, skip_connection, input_channels, output_channels, s
 
 def build_main_graph(left_image_batch, right_image_batch, is_corr=True, corr_type="tf"):
     if is_corr:
+         
+        # Resize images to fit input of DispNet
+        #left_image_batch = tf.reshape(left_image_batch, 1)
+        
         with tf.variable_scope("conv1") as scope:
+            left_image_batch = tf.image.resize_bilinear(left_image_batch, [np.int(384), np.int(768)])
+            right_image_batch = tf.image.resize_bilinear(right_image_batch, [np.int(384), np.int(768)])
             conv1a = conv2d(left_image_batch, [7, 7, 3, 64], strides=2)
             scope.reuse_variables()
             conv1b = conv2d(right_image_batch, [7, 7, 3, 64], strides=2)
@@ -189,8 +195,14 @@ def build_main_graph(left_image_batch, right_image_batch, is_corr=True, corr_typ
         concat1, predict2 = upsampling_block(concat2, conv1a, 64, 32, 64)
     with tf.variable_scope("prediction"):
         predict1 = conv2d(concat1, [3, 3, 32, 1], strides=1, relu=False)
-    return (predict1, predict2, predict3,
-            predict4, predict5, predict6)
+        
+    # Resizing of predictions
+    predict4 = tf.image.resize_bilinear(predict4, [np.int(16), np.int(52)])
+    predict3 = tf.image.resize_bilinear(predict3, [np.int(32), np.int(104)])
+    predict2 = tf.image.resize_bilinear(predict2, [np.int(64), np.int(208)])
+    predict1 = tf.image.resize_bilinear(predict1, [np.int(128), np.int(416)])
+    return ([predict1, predict2, predict3,
+            predict4], 0)
 
 
 def L1_loss(x, y):

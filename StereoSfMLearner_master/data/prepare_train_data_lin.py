@@ -27,7 +27,7 @@ def concat_image_seq(seq):
 def dump_example(n):
     if n % 2000 == 0:
         print('Progress %d/%d....' % (n, data_loader.num_train))
-    example = data_loader.get_train_example_with_idx(n)
+    example = data_loader.get_train_example_with_idx(n, '2')
     if example == False:
         return
     image_seq = concat_image_seq(example['image_seq'])
@@ -36,7 +36,7 @@ def dump_example(n):
     fy = intrinsics[1, 1]
     cx = intrinsics[0, 2]
     cy = intrinsics[1, 2]
-    dump_dir = os.path.join(args.dump_root, example['folder_name'])
+    dump_dir = os.path.join(args.dump_root, example['folder_name'] + '_2')
     # if not os.path.isdir(dump_dir):
     #     os.makedirs(dump_dir, exist_ok=True)
     try: 
@@ -49,7 +49,26 @@ def dump_example(n):
     dump_cam_file = dump_dir + '/%s_cam.txt' % example['file_name']
     with open(dump_cam_file, 'w') as f:
         f.write('%f,0.,%f,0.,%f,%f,0.,0.,1.' % (fx, cx, fy, cy))
-
+    
+    # same, but for right image (camera '3')
+    example = data_loader.get_train_example_with_idx(n, '3')
+    if example == False:
+        return
+    image_seq = concat_image_seq(example['image_seq'])
+    dump_dir = os.path.join(args.dump_root, example['folder_name'] + '_3')
+    # if not os.path.isdir(dump_dir):
+    #     os.makedirs(dump_dir, exist_ok=True)
+    try: 
+        os.makedirs(dump_dir)
+    except OSError:
+        if not os.path.isdir(dump_dir):
+            raise
+    dump_img_file = dump_dir + '/%s.jpg' % example['file_name']
+    scipy.misc.imsave(dump_img_file, image_seq.astype(np.uint8))
+    dump_cam_file = dump_dir + '/%s_cam.txt' % example['file_name']
+    with open(dump_cam_file, 'w') as f:
+        f.write('%f,0.,%f,0.,%f,%f,0.,0.,1.' % (fx, cx, fy, cy))
+    
 def main():
     if not os.path.exists(args.dump_root):
         os.makedirs(args.dump_root)
@@ -90,10 +109,12 @@ def main():
     # Split into train/val
     np.random.seed(8964)
     subfolders = os.listdir(args.dump_root)
-    with open(args.dump_root + 'train.txt', 'w') as tf:
-        with open(args.dump_root + 'val.txt', 'w') as vf:
+    with open(args.dump_root + '/train_2.txt', 'w') as tf:
+        with open(args.dump_root + '/val_2.txt', 'w') as vf:
             for s in subfolders:
                 if not os.path.isdir(args.dump_root + '/%s' % s):
+                    continue
+                if '_03' in s:
                     continue
                 imfiles = glob(os.path.join(args.dump_root, s, '*.jpg'))
                 frame_ids = [os.path.basename(fi).split('.')[0] for fi in imfiles]
@@ -102,6 +123,22 @@ def main():
                         vf.write('%s %s\n' % (s, frame))
                     else:
                         tf.write('%s %s\n' % (s, frame))
+    np.random.seed(8964)
+    with open(args.dump_root + '/train_3.txt', 'w') as tf:
+        with open(args.dump_root + '/val_3.txt', 'w') as vf:
+            for s in subfolders:
+                if not os.path.isdir(args.dump_root + '/%s' % s):
+                    continue
+                if '_02' in s:
+                    continue
+                imfiles = glob(os.path.join(args.dump_root, s, '*.jpg'))
+                frame_ids = [os.path.basename(fi).split('.')[0] for fi in imfiles]
+                for frame in frame_ids:
+                    if np.random.random() < 0.1:
+                        vf.write('%s %s\n' % (s, frame))
+                    else:
+                        tf.write('%s %s\n' % (s, frame))
+                        
 
 main()
 

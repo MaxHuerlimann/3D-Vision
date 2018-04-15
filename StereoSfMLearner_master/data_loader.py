@@ -19,12 +19,20 @@ class DataLoader(object):
         self.num_scales = num_scales
 
     def load_train_batch(self):
-        print('loading train batch')
+        print('Loading train batch')
         """Load a batch of training instances.
         """
         seed = random.randint(0, 2**31 - 1)
         # Load the list of training files into queues
         file_list_2, file_list_3 = self.format_file_list(self.dataset_dir, 'train')
+        # Load the images and augment
+        tgt_image_2, src_image_stack_2, intrinsics_2 = self.load_and_augment(file_list_2, seed)
+        tgt_image_3, src_image_stack_3, intrinsics_3 = self.load_and_augment(file_list_3, seed)        
+
+        
+        return tgt_image_2, tgt_image_3, src_image_stack_2, src_image_stack_3, intrinsics_2, intrinsics_3
+
+    def load_and_augment(self, file_list, seed):
         image_paths_queue = tf.train.string_input_producer(
             file_list['image_file_list'], 
             seed=seed, 
@@ -35,7 +43,6 @@ class DataLoader(object):
             shuffle=True)
         self.steps_per_epoch = int(
             len(file_list['image_file_list'])//self.batch_size)
-
         # Load images
         img_reader = tf.WholeFileReader()
         _, image_contents = img_reader.read(image_paths_queue)
@@ -59,7 +66,7 @@ class DataLoader(object):
         src_image_stack, tgt_image, intrinsics = \
                 tf.train.batch([src_image_stack, tgt_image, intrinsics], 
                                batch_size=self.batch_size)
-
+                
         # Data augmentation
         image_all = tf.concat([tgt_image, src_image_stack], axis=3)
         image_all, intrinsics = self.data_augmentation(
@@ -68,8 +75,9 @@ class DataLoader(object):
         src_image_stack = image_all[:, :, :, 3:]
         intrinsics = self.get_multi_scale_intrinsics(
             intrinsics, self.num_scales)
+        
         return tgt_image, src_image_stack, intrinsics
-
+                
     def make_intrinsics_matrix(self, fx, fy, cx, cy):
         # Assumes batch input
         batch_size = fx.get_shape().as_list()[0]

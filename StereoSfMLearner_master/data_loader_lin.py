@@ -23,7 +23,15 @@ class DataLoader(object):
         """
         seed = random.randint(0, 2**31 - 1)
         # Load the list of training files into queues
-        file_list = self.format_file_list(self.dataset_dir, 'train')
+        file_list_2, file_list_3 = self.format_file_list(self.dataset_dir, 'train')
+        # Load the images and augment
+        tgt_image_2, src_image_stack_2, intrinsics_2 = self.load_and_augment(file_list_2, seed)
+        tgt_image_3, src_image_stack_3, intrinsics_3 = self.load_and_augment(file_list_3, seed)        
+
+        
+        return tgt_image_2, tgt_image_3, src_image_stack_2, src_image_stack_3, intrinsics_2, intrinsics_3
+
+    def load_and_augment(self, file_list, seed):
         image_paths_queue = tf.train.string_input_producer(
             file_list['image_file_list'], 
             seed=seed, 
@@ -34,7 +42,6 @@ class DataLoader(object):
             shuffle=True)
         self.steps_per_epoch = int(
             len(file_list['image_file_list'])//self.batch_size)
-
         # Load images
         img_reader = tf.WholeFileReader()
         _, image_contents = img_reader.read(image_paths_queue)
@@ -53,12 +60,12 @@ class DataLoader(object):
                                     record_defaults=rec_def)
         raw_cam_vec = tf.stack(raw_cam_vec)
         intrinsics = tf.reshape(raw_cam_vec, [3, 3])
-
+        
         # Form training batches
         src_image_stack, tgt_image, intrinsics = \
                 tf.train.batch([src_image_stack, tgt_image, intrinsics], 
                                batch_size=self.batch_size)
-
+                
         # Data augmentation
         image_all = tf.concat([tgt_image, src_image_stack], axis=3)
         image_all, intrinsics = self.data_augmentation(
@@ -67,8 +74,9 @@ class DataLoader(object):
         src_image_stack = image_all[:, :, :, 3:]
         intrinsics = self.get_multi_scale_intrinsics(
             intrinsics, self.num_scales)
+        
         return tgt_image, src_image_stack, intrinsics
-
+        
     def make_intrinsics_matrix(self, fx, fy, cx, cy):
         # Assumes batch input
         batch_size = fx.get_shape().as_list()[0]
@@ -117,7 +125,7 @@ class DataLoader(object):
         return im, intrinsics
 
     def format_file_list(self, data_root, split):
-        with open(data_root + '/%s.txt' % split, 'r') as f:
+        with open(data_root + '/%s_2.txt' % split, 'r') as f:
             frames = f.readlines()
         subfolders = [x.split(' ')[0] for x in frames]
         frame_ids = [x.split(' ')[1][:-1] for x in frames]
@@ -125,10 +133,22 @@ class DataLoader(object):
             frame_ids[i] + '.jpg') for i in range(len(frames))]
         cam_file_list = [os.path.join(data_root, subfolders[i], 
             frame_ids[i] + '_cam.txt') for i in range(len(frames))]
-        all_list = {}
-        all_list['image_file_list'] = image_file_list
-        all_list['cam_file_list'] = cam_file_list
-        return all_list
+        all_list_2 = {}
+        all_list_2['image_file_list'] = image_file_list
+        all_list_2['cam_file_list'] = cam_file_list
+        # Do the same for the right one
+        with open(data_root + '/%s_3.txt' % split, 'r') as f:
+            frames = f.readlines()
+        subfolders = [x.split(' ')[0] for x in frames]
+        frame_ids = [x.split(' ')[1][:-1] for x in frames]
+        image_file_list = [os.path.join(data_root, subfolders[i], 
+            frame_ids[i] + '.jpg') for i in range(len(frames))]
+        cam_file_list = [os.path.join(data_root, subfolders[i], 
+            frame_ids[i] + '_cam.txt') for i in range(len(frames))]
+        all_list_3 = {}
+        all_list_3['image_file_list'] = image_file_list
+        all_list_3['cam_file_list'] = cam_file_list
+        return all_list_2, all_list_3
 
     def unpack_image_sequence(self, image_seq, img_height, img_width, num_source):
         # Assuming the center image is the target frame

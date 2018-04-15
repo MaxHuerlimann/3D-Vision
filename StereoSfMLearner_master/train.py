@@ -5,6 +5,10 @@ import random
 import numpy as np
 from StereoSfMLearner import SfMLearner
 import os
+import argparse
+
+# Reset argparse flags
+tf.flags._global_parser = argparse.ArgumentParser()
 
 flags = tf.app.flags
 flags.DEFINE_string("dataset_dir", "G:\\KITTI_Od\\data_odometry_color\\formatted_data_test", "Dataset directory")
