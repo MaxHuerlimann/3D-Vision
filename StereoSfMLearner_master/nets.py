@@ -96,6 +96,7 @@ def disp_net(tgt_image, is_training=True):
             cnv7  = slim.conv2d(cnv6b, 512, [3, 3], stride=2, scope='cnv7')
             cnv7b = slim.conv2d(cnv7,  512, [3, 3], stride=1, scope='cnv7b')
 
+
             upcnv7 = slim.conv2d_transpose(cnv7b, 512, [3, 3], stride=2, scope='upcnv7')
             # There might be dimension mismatch due to uneven down/up-sampling
             upcnv7 = resize_like(upcnv7, cnv6b)
@@ -132,7 +133,7 @@ def disp_net(tgt_image, is_training=True):
             disp2  = DISP_SCALING * slim.conv2d(icnv2, 1,   [3, 3], stride=1, 
                 activation_fn=tf.sigmoid, normalizer_fn=None, scope='disp2') + MIN_DISP
             disp2_up = tf.image.resize_bilinear(disp2, [H, W])
-
+	
             upcnv1 = slim.conv2d_transpose(icnv2, 16,  [3, 3], stride=2, scope='upcnv1')
             i1_in  = tf.concat([upcnv1, disp2_up], axis=3)
             icnv1  = slim.conv2d(i1_in, 16,  [3, 3], stride=1, scope='icnv1')

@@ -71,6 +71,8 @@ class DataLoader(object):
         image_all = tf.concat([tgt_image, src_image_stack], axis=3)
         image_all, intrinsics = self.data_augmentation(
             image_all, intrinsics, self.img_height, self.img_width)
+        
+        # Change the first dimension!!!! To reduce batch size
         tgt_image = image_all[:, :, :, :3]
         src_image_stack = image_all[:, :, :, 3:]
         intrinsics = self.get_multi_scale_intrinsics(

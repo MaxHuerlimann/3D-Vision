@@ -71,7 +71,11 @@ def computeSoftArgMin(logits,h,w,d):
 	disp = tf.cast(disp, tf.float32)
 	disp_mat = []
 	for i in range(w*h):
+<<<<<<< 7e2e4cd7bafef9abdf785cfd7ec036f55e60d9bc
 			disp_mat.append(disp)
+=======
+	    disp_mat.append(disp)
+>>>>>>> Implement GCNet as the disparity estimator
 	disp_mat = tf.reshape(tf.stack(disp_mat), [h,w,d])
 	result = tf.multiply(softmax, disp_mat)
 	result = tf.reduce_sum(result, 2)
@@ -219,6 +223,10 @@ def test(params):
     disp_pre = tf.expand_dims(disp_pre, 2)
     disp_pre = tf.image.resize_images(disp_pre, [h, w], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
     disp_pre = tf.squeeze(disp_pre)
+<<<<<<< 7e2e4cd7bafef9abdf785cfd7ec036f55e60d9bc
+=======
+    print('disp_pre ready')
+>>>>>>> Implement GCNet as the disparity estimator
 
     #SESSION
     config=tf.ConfigProto(allow_soft_placement=True)
@@ -233,6 +241,10 @@ def test(params):
     coordinator=tf.train.Coordinator()
 
     #RESTORE
+<<<<<<< 7e2e4cd7bafef9abdf785cfd7ec036f55e60d9bc
+=======
+    print('Starting to restore')
+>>>>>>> Implement GCNet as the disparity estimator
     if args.checkpoint_path=='':
         restore_path=tf.train.latest_checkpoint(args.log_directory+'/'+args.model_name)
     else:
@@ -262,6 +274,10 @@ def test(params):
         imgL=np.expand_dims(imgL,axis=0)
         imgR=np.expand_dims(imgR,axis=0)
         start_time=time.time()
+<<<<<<< 7e2e4cd7bafef9abdf785cfd7ec036f55e60d9bc
+=======
+        print('session started')
+>>>>>>> Implement GCNet as the disparity estimator
         disp = sess.run(disp_pre,
                         feed_dict={left_img: (imgL / 255.0 - 0.5) / 0.5, right_img: (imgR / 255.0 - 0.5) / 0.5})
         print('time = %.2f' %(time.time()-start_time))

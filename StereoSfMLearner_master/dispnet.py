@@ -136,11 +136,8 @@ def upsampling_block(bottom, skip_connection, input_channels, output_channels, s
 
 def build_main_graph(left_image_batch, right_image_batch, is_corr=True, corr_type="tf"):
     if is_corr:
-         
-        # Resize images to fit input of DispNet
-        #left_image_batch = tf.reshape(left_image_batch, 1)
-        
         with tf.variable_scope("conv1") as scope:
+            # Resize images to fit input of DispNet
             left_image_batch = tf.image.resize_bilinear(left_image_batch, [np.int(384), np.int(768)])
             right_image_batch = tf.image.resize_bilinear(right_image_batch, [np.int(384), np.int(768)])
             conv1a = conv2d(left_image_batch, [7, 7, 3, 64], strides=2)

@@ -320,7 +320,13 @@ def regular_deconv(x20, x23, x26, x, c):
 
 	c['conv_filters_out'] = 1
 	with tf.variable_scope('Deconv_3d_' + str(34)):
+<<<<<<< 7e2e4cd7bafef9abdf785cfd7ec036f55e60d9bc
 		x = deconv_3d(x, c)
+=======
+	    print('start deconv_3d')
+		x = deconv_3d(x, c)
+	print('Finished deconv layer')
+>>>>>>> Implement GCNet as the disparity estimator
 	return x
 
 

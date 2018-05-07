@@ -6,9 +6,10 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from data_loader import DataLoader
-from nets import *
+from nets import pose_exp_net
+from gcnet import disp_net
 from utils import *
-from dispnet import *
+
 
 class SfMLearner(object):
     def __init__(self):
@@ -34,14 +35,14 @@ class SfMLearner(object):
             # Preprocess right images
             tgt_image_3 = self.preprocess_image(tgt_image_3)
             src_image_stack_3 = self.preprocess_image(src_image_stack_3)
-            print(tgt_image_2.get_shape())
 
         # Here Stereo DispNet gets included
         with tf.name_scope("depth_prediction"):
             print('Depth prediction')
 
-            pred_disp, depth_net_endpoints = build_main_graph(tgt_image_2, tgt_image_3, is_corr=True, corr_type="tf")
-            pred_depth = [1./d for d in pred_disp]
+            pred_disp, depth_net_endpoints = disp_net(tgt_image_2, opt.max_disparity)
+#            pred_disp = disp_net(tgt_image_2)
+            pred_depth = 1./pred_disp
 
         with tf.name_scope("pose_and_explainability_prediction"):
             print('Pose prediction started')
@@ -77,13 +78,13 @@ class SfMLearner(object):
 
                 if opt.smooth_weight > 0:
                     smooth_loss += opt.smooth_weight/(2**s) * \
-                        self.compute_smooth_loss(pred_disp[s])
+                        self.compute_smooth_loss(pred_disp)
 
                 for i in range(opt.num_source):
                     # Inverse warp the source image to the target image frame
                     curr_proj_image = projective_inverse_warp(
                         curr_src_image_stack[:,:,:,3*i:3*(i+1)], 
-                        tf.squeeze(pred_depth[s], axis=3), 
+                        tf.expand_dims(pred_depth, 0), 
                         pred_poses[:,i,:], 
                         intrinsics_2[:,s,:,:])
                     curr_proj_error = tf.abs(curr_proj_image - curr_tgt_image)
@@ -171,8 +172,8 @@ class SfMLearner(object):
 
     def compute_smooth_loss(self, pred_disp):
         def gradient(pred):
-            D_dy = pred[:, 1:, :, :] - pred[:, :-1, :, :]
-            D_dx = pred[:, :, 1:, :] - pred[:, :, :-1, :]
+            D_dy = pred[ 1: , :] - pred[ :-1, :]
+            D_dx = pred[ : , 1:] - pred[ : , :-1]
             return D_dx, D_dy
         dx, dy = gradient(pred_disp)
         dx2, dxdy = gradient(dx)
@@ -215,26 +216,40 @@ class SfMLearner(object):
         #     tf.summary.histogram(var.op.name + "/values", var)
         # for grad, var in self.grads_and_vars:
         #     tf.summary.histogram(var.op.name + "/gradients", grad)
+        self.merged_summary = tf.summary.merge_all()
+        writer = tf.summary.FileWriter(opt.checkpoint_dir)
+        
+        
+        
 
     def train(self, opt):
         opt.num_source = opt.seq_length - 1
         # TODO: currently fixed to 4
-        opt.num_scales = 4
+        opt.num_scales = 1
         self.opt = opt
         self.build_train_graph()
         self.collect_summaries()
+        print('graph built')
         with tf.name_scope("parameter_count"):
             parameter_count = tf.reduce_sum([tf.reduce_prod(tf.shape(v)) \
                                             for v in tf.trainable_variables()])
         self.saver = tf.train.Saver([var for var in tf.model_variables()] + \
                                     [self.global_step],
                                      max_to_keep=10)
+        
+        gcnet_var = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="stereo_network")
+        self.gcnet_saver = tf.train.Saver(var_list = gcnet_var)
+        
         sv = tf.train.Supervisor(logdir=opt.checkpoint_dir, 
                                  save_summaries_secs=0, 
                                  saver=None)
+        
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         with sv.managed_session(config=config) as sess:
+            #INIT
+            restore_path=tf.train.latest_checkpoint(opt.gcnet_model_dir)
+            self.gcnet_saver.restore(sess, restore_path)
             print('Trainable variables: ')
             for var in tf.trainable_variables():
                 print(var.name)
@@ -245,7 +260,8 @@ class SfMLearner(object):
                 else:
                     checkpoint = opt.init_checkpoint_file
                 print("Resume training from previous checkpoint: %s" % checkpoint)
-                self.saver.restore(sess, checkpoint)
+#                self.saver.restore(sess, checkpoint)
+            print('Checkpoints checked')
             start_time = time.time()
             for step in range(1, opt.max_steps):
                 fetches = {
@@ -265,7 +281,7 @@ class SfMLearner(object):
                     sv.summary_writer.add_summary(results["summary"], gs)
                     train_epoch = math.ceil(gs / self.steps_per_epoch)
                     train_step = gs - (train_epoch - 1) * self.steps_per_epoch
-                    print("Epoch: [%2d] [%5d/%5d] time: %4.4f/it loss: %.3f" \
+                    print("Epoch: [ %2d] [%5d/%5d] time: %4.4f/it loss: %.3f" \
                             % (train_epoch, train_step, self.steps_per_epoch, \
                                 (time.time() - start_time)/opt.summary_freq, 
                                 results["loss"]))
@@ -351,3 +367,4 @@ class SfMLearner(object):
             self.saver.save(sess, 
                             os.path.join(checkpoint_dir, model_name),
                             global_step=step)
+        

@@ -132,7 +132,7 @@ def disp_net(tgt_image, is_training=True):
             disp2  = DISP_SCALING * slim.conv2d(icnv2, 1,   [3, 3], stride=1, 
                 activation_fn=tf.sigmoid, normalizer_fn=None, scope='disp2') + MIN_DISP
             disp2_up = tf.image.resize_bilinear(disp2, [H, W])
-
+	
             upcnv1 = slim.conv2d_transpose(icnv2, 16,  [3, 3], stride=2, scope='upcnv1')
             i1_in  = tf.concat([upcnv1, disp2_up], axis=3)
             icnv1  = slim.conv2d(i1_in, 16,  [3, 3], stride=1, scope='icnv1')

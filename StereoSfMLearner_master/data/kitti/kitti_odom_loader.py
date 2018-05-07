@@ -18,7 +18,7 @@ class kitti_odom_loader(object):
         self.img_width = img_width
         self.seq_length = seq_length
         self.train_seqs = [1]
-        self.test_seqs = [3]
+        self.test_seqs = [4]
 
         self.collect_test_frames()
         self.collect_train_frames()
