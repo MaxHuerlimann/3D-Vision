@@ -1,6 +1,9 @@
 from __future__ import division
 import os
 import random
+import cv2
+import csv
+import numpy as np
 import tensorflow as tf
 
 class DataLoader(object):
@@ -18,29 +21,14 @@ class DataLoader(object):
         self.num_source = num_source
         self.num_scales = num_scales
 
-    def load_train_batch(self):
-        print('Loading train batch')
-        """Load a batch of training instances.
-        """
-        seed = random.randint(0, 2**31 - 1)
-        # Load the list of training files into queues
-        file_list_2, file_list_3 = self.format_file_list(self.dataset_dir, 'train')
-        # Load the images and augment
-        tgt_image_2, src_image_stack_2, intrinsics_2 = self.load_and_augment(file_list_2, seed)
-        tgt_image_3, src_image_stack_3, intrinsics_3 = self.load_and_augment(file_list_3, seed)        
-
-        
-        return tgt_image_2, tgt_image_3, src_image_stack_2, src_image_stack_3, intrinsics_2, intrinsics_3
-
     def load_and_augment(self, file_list, seed):
+        random.seed(seed)
+        random.shuffle(file_list['image_file_list'])
         image_paths_queue = tf.train.string_input_producer(
-            file_list['image_file_list'], 
-            seed=seed, 
-            shuffle=True)
+            file_list['image_file_list'])
+        random.shuffle(file_list['cam_file_list'])
         cam_paths_queue = tf.train.string_input_producer(
-            file_list['cam_file_list'], 
-            seed=seed, 
-            shuffle=True)
+            file_list['cam_file_list'])
         self.steps_per_epoch = int(
             len(file_list['image_file_list'])//self.batch_size)
         # Load images
@@ -61,7 +49,7 @@ class DataLoader(object):
                                     record_defaults=rec_def)
         raw_cam_vec = tf.stack(raw_cam_vec)
         intrinsics = tf.reshape(raw_cam_vec, [3, 3])
-
+        
         # Form training batches
         src_image_stack, tgt_image, intrinsics = \
                 tf.train.batch([src_image_stack, tgt_image, intrinsics], 
@@ -71,15 +59,13 @@ class DataLoader(object):
         image_all = tf.concat([tgt_image, src_image_stack], axis=3)
         image_all, intrinsics = self.data_augmentation(
             image_all, intrinsics, self.img_height, self.img_width)
-        
-        # Change the first dimension!!!! To reduce batch size
         tgt_image = image_all[:, :, :, :3]
         src_image_stack = image_all[:, :, :, 3:]
         intrinsics = self.get_multi_scale_intrinsics(
             intrinsics, self.num_scales)
         
-        return tgt_image, src_image_stack, intrinsics
-                
+        return tgt_image, src_image_stack, intrinsics, file_list['image_file_list']
+        
     def make_intrinsics_matrix(self, fx, fy, cx, cy):
         # Assumes batch input
         batch_size = fx.get_shape().as_list()[0]
@@ -127,8 +113,8 @@ class DataLoader(object):
         im = tf.cast(im, dtype=tf.uint8)
         return im, intrinsics
 
-    def format_file_list(self, data_root, split):
-        with open(data_root + '\\%s_2.txt' % split, 'r') as f:
+    def format_file_list(self, data_root, split, camera):
+        with open(data_root + '/%s_%d.txt' % (split, camera), 'r') as f:
             frames = f.readlines()
         subfolders = [x.split(' ')[0] for x in frames]
         frame_ids = [x.split(' ')[1][:-1] for x in frames]
@@ -136,25 +122,14 @@ class DataLoader(object):
             frame_ids[i] + '.jpg') for i in range(len(frames))]
         cam_file_list = [os.path.join(data_root, subfolders[i], 
             frame_ids[i] + '_cam.txt') for i in range(len(frames))]
-        all_list_2 = {}
-        all_list_2['image_file_list'] = image_file_list
-        all_list_2['cam_file_list'] = cam_file_list
-        # Do the same for the right one
-        with open(data_root + '\\%s_3.txt' % split, 'r') as f:
-            frames = f.readlines()
-        subfolders = [x.split(' ')[0] for x in frames]
-        frame_ids = [x.split(' ')[1][:-1] for x in frames]
-        image_file_list = [os.path.join(data_root, subfolders[i], 
-            frame_ids[i] + '.jpg') for i in range(len(frames))]
-        cam_file_list = [os.path.join(data_root, subfolders[i], 
-            frame_ids[i] + '_cam.txt') for i in range(len(frames))]
-        all_list_3 = {}
-        all_list_3['image_file_list'] = image_file_list
-        all_list_3['cam_file_list'] = cam_file_list
-        return all_list_2, all_list_3
+        all_list = {}
+        all_list['image_file_list'] = image_file_list
+        all_list['cam_file_list'] = cam_file_list
+        return all_list
 
     def unpack_image_sequence(self, image_seq, img_height, img_width, num_source):
         # Assuming the center image is the target frame
+        image_seq = tf.squeeze(image_seq)
         tgt_start_idx = int(img_width * (num_source//2))
         tgt_image = tf.slice(image_seq, 
                              [0, tgt_start_idx, 0], 
@@ -177,6 +152,7 @@ class DataLoader(object):
                                    img_width, 
                                    num_source * 3])
         tgt_image.set_shape([img_height, img_width, 3])
+        
         return tgt_image, src_image_stack
 
     def batch_unpack_image_sequence(self, image_seq, img_height, img_width, num_source):
@@ -213,3 +189,63 @@ class DataLoader(object):
                 self.make_intrinsics_matrix(fx, fy, cx, cy))
         intrinsics_mscale = tf.stack(intrinsics_mscale, axis=1)
         return intrinsics_mscale
+    
+    def unpack_image_sequence_gcnet(self, image_seq, img_height, img_width, num_source):
+        tgt_start_idx = int(img_width * (num_source//2))
+        tgt_image = tf.slice(image_seq, 
+                             [0, 0, tgt_start_idx, 0], 
+                             [-1, -1, img_width, -1])
+        
+        return tgt_image
+    
+    def load_gcnet_img(self, file_path_left, file_path_right):
+        img_seq_left = cv2.imread(file_path_left)
+        img_seq_right = cv2.imread(file_path_right)
+        return img_seq_left, img_seq_right
+    
+    def load_raw_cam_vec(self, file_path):
+        with open(file_path, 'r') as cam:
+            reader = csv.reader(cam)
+            cam_vec = list(reader)
+            raw_cam_vec = np.reshape(np.array(cam_vec), (9,))
+        return raw_cam_vec
+    
+    def shuffle_files(self, all_list_2, all_list_3):
+        img_file_list_2 = all_list_2['image_file_list']
+        img_file_list_3 = all_list_3['image_file_list']
+        cam_file_list_2 = all_list_2['cam_file_list']
+        cam_file_list_3 = all_list_3['cam_file_list']
+        file_lists = list(zip(img_file_list_2, img_file_list_3, cam_file_list_2, cam_file_list_3))
+        random.shuffle(file_lists)
+        img_file_list_2_sh, img_file_list_3_sh, cam_file_list_2_sh, cam_file_list_3_sh = zip(*file_lists)
+        return img_file_list_2_sh, img_file_list_3_sh, cam_file_list_2_sh, cam_file_list_3_sh
+
+    def augment_new(self, image_seq, raw_cam_vec):
+        # Unpack image sequence
+        tgt_image, src_image_stack = \
+            self.unpack_image_sequence(
+                image_seq, self.img_height, self.img_width, self.num_source)
+
+        # Load camera intrinsics
+        intrinsics = tf.reshape(raw_cam_vec, [3, 3])
+        
+        # Form training batches
+        src_image_stack = tf.expand_dims(src_image_stack, 0)
+        tgt_image = tf.expand_dims(tgt_image, 0)
+        intrinsics = tf.expand_dims(intrinsics, 0)
+        
+        # Data augmentation
+        image_all = tf.concat([tgt_image, src_image_stack], axis=3)
+        image_all, intrinsics = self.data_augmentation(
+            image_all, intrinsics, self.img_height, self.img_width)
+        tgt_image = image_all[:, :, :, :3]
+        src_image_stack = image_all[:, :, :, 3:]
+        intrinsics = self.get_multi_scale_intrinsics(
+            intrinsics, self.num_scales)
+        
+        # To define epoch size
+        file_list = self.format_file_list(self.dataset_dir, 'train', 2)
+        self.steps_per_epoch = int(
+            len(file_list['image_file_list'])//1)
+        return tgt_image, src_image_stack, intrinsics
+    

@@ -26,22 +26,22 @@ from GCDataloader import *
 from pdb import set_trace as st
 
 GC_parameters=namedtuple('parameters',
-			'height, '
-			'width, '
-			'batch_size, '
-			'num_threads, '
-			'num_epochs, '
-			'max_disparity, '
-			'full_summary')
+            'height, '
+            'width, '
+            'batch_size, '
+            'num_threads, '
+            'num_epochs, '
+            'max_disparity, '
+            'full_summary')
 
 
 parser = argparse.ArgumentParser(description='Monodepth TensorFlow implementation.')
 
-parser.add_argument('--mode',                      type=str,   help='train or test', default='train')
-parser.add_argument('--model_name',                type=str,   help='model name', default='GCNetSF')
+parser.add_argument('--mode',                      type=str,   help='train or test', default='test')
+parser.add_argument('--model_name',                type=str,   help='model name', default='model_test')
 parser.add_argument('--dataset',                   type=str,   help='dataset to train on, kitti, or cityscapes', default='kitti')
-parser.add_argument('--data_path',                 type=str,   help='path to the data', default='')
-parser.add_argument('--filenames_file',            type=str,   help='path to the filenames text file', default='./train2.txt')
+parser.add_argument('--data_path',                 type=str,   help='path to the data', default='.\\testingdata\\')
+parser.add_argument('--filenames_file',            type=str,   help='path to the filenames text file', default='.\\test_files.txt')
 parser.add_argument('--input_height',              type=int,   help='input height', default=256)
 parser.add_argument('--input_width',               type=int,   help='input width', default=512)
 parser.add_argument('--batch_size',                type=int,   help='batch size', default=1)
@@ -50,8 +50,8 @@ parser.add_argument('--learning_rate',             type=float, help='initial lea
 parser.add_argument('--max_disparity',             type=int,   help='maximum disparity', default=192)
 parser.add_argument('--num_gpus',                  type=int,   help='number of GPUs to use for training', default=1)
 parser.add_argument('--num_threads',               type=int,   help='number of threads to use for data loading', default=8)
-parser.add_argument('--output_directory',          type=str,   help='output directory for test disparities, if empty outputs to checkpoint folder', default='./test_result/')
-parser.add_argument('--log_directory',             type=str,   help='directory to save checkpoints and summaries', default='./log/')
+parser.add_argument('--output_directory',          type=str,   help='output directory for test disparities, if empty outputs to checkpoint folder', default='.\\test_result\\')
+parser.add_argument('--log_directory',             type=str,   help='directory to save checkpoints and summaries', default='.\\log\\')
 parser.add_argument('--checkpoint_path',           type=str,   help='path to a specific checkpoint to load', default='')
 parser.add_argument('--retrain',                               help='if used with checkpoint_path, will restart training from step zero', action='store_true')
 parser.add_argument('--full_summary',                          help='if set, will keep more data for each summary. Warning: the file can become very large', action='store_true')
@@ -66,34 +66,31 @@ def count_text_lines(file_path):
     return len(lines),lines
 
 def computeSoftArgMin(logits,h,w,d):
-	softmax = tf.nn.softmax(logits)
-	disp = tf.range(1, d+1, 1)
-	disp = tf.cast(disp, tf.float32)
-	disp_mat = []
-	for i in range(w*h):
-<<<<<<< 7e2e4cd7bafef9abdf785cfd7ec036f55e60d9bc
-			disp_mat.append(disp)
-=======
-	    disp_mat.append(disp)
->>>>>>> Implement GCNet as the disparity estimator
-	disp_mat = tf.reshape(tf.stack(disp_mat), [h,w,d])
-	result = tf.multiply(softmax, disp_mat)
-	result = tf.reduce_sum(result, 2)
-	return result
+    softmax = tf.nn.softmax(logits)
+    disp = tf.range(1, d+1, 1)
+    disp = tf.cast(disp, tf.float32)
+    disp_mat = []
+    for i in range(w*h):
+        disp_mat.append(disp)
+    disp_mat.append(disp)
+    disp_mat = tf.reshape(tf.stack(disp_mat), [h,w,d])
+    result = tf.multiply(softmax, disp_mat)
+    result = tf.reduce_sum(result, 2)
+    return result
 
 
 def disp_loss(left_logits, left_labels):
-	left_loss_ = tf.abs(tf.subtract(left_logits, left_labels))
-	left_mask = tf.cast(left_labels>0, dtype=tf.bool)
-	left_loss_ = tf.where(left_mask, left_loss_, tf.zeros_like(left_loss_))
-	regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-	left_loss_sum = tf.reduce_sum(left_loss_)
-	left_mask = tf.cast(left_mask, tf.float32)
-	left_loss_mean = tf.div(left_loss_sum, tf.reduce_sum(left_mask))
-	loss_final=tf.add_n([left_loss_mean]+regularization_losses)
-	return loss_final
+    left_loss_ = tf.abs(tf.subtract(left_logits, left_labels))
+    left_mask = tf.cast(left_labels>0, dtype=tf.bool)
+    left_loss_ = tf.where(left_mask, left_loss_, tf.zeros_like(left_loss_))
+    regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+    left_loss_sum = tf.reduce_sum(left_loss_)
+    left_mask = tf.cast(left_mask, tf.float32)
+    left_loss_mean = tf.div(left_loss_sum, tf.reduce_sum(left_mask))
+    loss_final=tf.add_n([left_loss_mean]+regularization_losses)
+    return loss_final
 
-	
+    
 def train(params):
     """Training loop."""
     print("==========train========")
@@ -139,10 +136,10 @@ def train(params):
             for i in range(args.num_gpus):
                 with tf.device('/gpu:2'):
                     disp_pre = stereo_model((left_splits[i]/255.0-0.5)/0.5, (right_splits[i]/255.0-0.5)/0.5, params, is_training=True,
-					                        rv=reuse_variables)
+                                            rv=reuse_variables)
                     sum_predisp = tf.expand_dims(disp_pre, 2)
                     disp_pre = tf.image.resize_images(sum_predisp * 2, [args.input_height, args.input_width],
-					                                  tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+                                                      tf.image.ResizeMethod.NEAREST_NEIGHBOR)
                     disp_pre = tf.squeeze(disp_pre)
                     print('disp__size' + str(disp_pre.get_shape()))
                     tf.summary.image('gt_disparity', tf.image.convert_image_dtype(left_labels[i], tf.uint8))
@@ -153,7 +150,7 @@ def train(params):
                     grads = optimizer.compute_gradients(total_loss)
 
                     tf.summary.image('predict_disparity',
-					                 tf.expand_dims(tf.image.convert_image_dtype(sum_predisp/255.0, tf.uint8), 0))
+                                     tf.expand_dims(tf.image.convert_image_dtype(sum_predisp/255.0, tf.uint8), 0))
 
         apply_gradient_op = optimizer.apply_gradients(grads, global_step=global_step)
         batchnorm_updates = tf.get_collection(UPDATE_OPS_COLLECTION)
@@ -213,6 +210,7 @@ def train(params):
 
 def test(params):
     """Test function."""
+    tf.reset_default_graph()
     print("=====================test===================")
     h=384
     w=1280
@@ -223,10 +221,8 @@ def test(params):
     disp_pre = tf.expand_dims(disp_pre, 2)
     disp_pre = tf.image.resize_images(disp_pre, [h, w], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
     disp_pre = tf.squeeze(disp_pre)
-<<<<<<< 7e2e4cd7bafef9abdf785cfd7ec036f55e60d9bc
-=======
+
     print('disp_pre ready')
->>>>>>> Implement GCNet as the disparity estimator
 
     #SESSION
     config=tf.ConfigProto(allow_soft_placement=True)
@@ -241,10 +237,7 @@ def test(params):
     coordinator=tf.train.Coordinator()
 
     #RESTORE
-<<<<<<< 7e2e4cd7bafef9abdf785cfd7ec036f55e60d9bc
-=======
     print('Starting to restore')
->>>>>>> Implement GCNet as the disparity estimator
     if args.checkpoint_path=='':
         restore_path=tf.train.latest_checkpoint(args.log_directory+'/'+args.model_name)
     else:
@@ -274,10 +267,7 @@ def test(params):
         imgL=np.expand_dims(imgL,axis=0)
         imgR=np.expand_dims(imgR,axis=0)
         start_time=time.time()
-<<<<<<< 7e2e4cd7bafef9abdf785cfd7ec036f55e60d9bc
-=======
         print('session started')
->>>>>>> Implement GCNet as the disparity estimator
         disp = sess.run(disp_pre,
                         feed_dict={left_img: (imgL / 255.0 - 0.5) / 0.5, right_img: (imgR / 255.0 - 0.5) / 0.5})
         print('time = %.2f' %(time.time()-start_time))
@@ -294,7 +284,7 @@ def main(_):
         batch_size=args.batch_size,
         num_threads=args.num_threads,
         num_epochs=args.num_epochs,
-		max_disparity=args.max_disparity,
+        max_disparity=args.max_disparity,
         full_summary=args.full_summary)
 
     if args.mode == 'train':

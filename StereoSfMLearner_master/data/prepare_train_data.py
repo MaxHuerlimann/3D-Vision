@@ -7,10 +7,10 @@ from joblib import Parallel, delayed
 import os
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--dataset_dir", type=str, required=True, help="where the dataset is stored")
-parser.add_argument("--dataset_name", type=str, required=True, choices=["kitti_raw_eigen", "kitti_raw_stereo", "kitti_odom", "cityscapes"])
-parser.add_argument("--dump_root", type=str, required=True, help="Where to dump the data")
-parser.add_argument("--seq_length", type=int, required=True, help="Length of each training sequence")
+parser.add_argument("--dataset_dir", type=str, default="G:\\KITTI_Od\\data_odometry_color\\dataset\\", help="where the dataset is stored")
+parser.add_argument("--dataset_name", type=str, default="kitti_odom", choices=["kitti_raw_eigen", "kitti_raw_stereo", "kitti_odom", "cityscapes"])
+parser.add_argument("--dump_root", type=str, default="G:\\KITTI_Od\\data_odometry_color\\formatted_data_test\\", help="Where to dump the data")
+parser.add_argument("--seq_length", type=int, default=3, help="Length of each training sequence")
 parser.add_argument("--img_height", type=int, default=128, help="image height")
 parser.add_argument("--img_width", type=int, default=416, help="image width")
 parser.add_argument("--num_threads", type=int, default=4, help="number of threads to use")
@@ -108,19 +108,20 @@ def main():
     Parallel(n_jobs=args.num_threads)(delayed(dump_example)(n,data_loader) for n in range(data_loader.num_train))
 
     # Split into train/val
-    np.random.seed(8964)
     subfolders = os.listdir(args.dump_root)
+    subfolders.sort
+    np.random.seed(8964)
     with open(args.dump_root + '\\train_2.txt', 'w') as tf:
         with open(args.dump_root + '\\val_2.txt', 'w') as vf:
             for s in subfolders:
                 if not os.path.isdir(args.dump_root + '\\%s' % s):
                     continue
-                if '_03' in s:
+                if '_3' in s:
                     continue
                 imfiles = glob(os.path.join(args.dump_root, s, '*.jpg'))
                 frame_ids = [os.path.basename(fi).split('.')[0] for fi in imfiles]
                 for frame in frame_ids:
-                    if np.random.random() < 0.1:
+                    if np.random.random() < 0:
                         vf.write('%s %s\n' % (s, frame))
                     else:
                         tf.write('%s %s\n' % (s, frame))
@@ -130,12 +131,12 @@ def main():
             for s in subfolders:
                 if not os.path.isdir(args.dump_root + '\\%s' % s):
                     continue
-                if '_02' in s:
+                if '_2' in s:
                     continue
                 imfiles = glob(os.path.join(args.dump_root, s, '*.jpg'))
                 frame_ids = [os.path.basename(fi).split('.')[0] for fi in imfiles]
                 for frame in frame_ids:
-                    if np.random.random() < 0.1:
+                    if np.random.random() < 0:
                         vf.write('%s %s\n' % (s, frame))
                     else:
                         tf.write('%s %s\n' % (s, frame))

@@ -17,8 +17,8 @@ class kitti_odom_loader(object):
         self.img_height = img_height
         self.img_width = img_width
         self.seq_length = seq_length
-        self.train_seqs = [1]
-        self.test_seqs = [4]
+        self.train_seqs = [0,1,2]
+        self.test_seqs = []
 
         self.collect_test_frames()
         self.collect_train_frames()
@@ -40,7 +40,7 @@ class kitti_odom_loader(object):
         for seq in self.train_seqs:
             seq_dir = os.path.join(self.dataset_dir, 'sequences', '%.2d' % seq)
             img_dir = os.path.join(seq_dir, 'image_2')
-            N = len(glob(img_dir + '/*.png'))
+            N = len(glob(img_dir + '/0*'))
             for n in range(N):
                 self.train_frames.append('%.2d %.6d' % (seq, n))
         self.num_train = len(self.train_frames)

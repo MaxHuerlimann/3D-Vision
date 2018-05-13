@@ -361,15 +361,9 @@ def stereo_model(left_x, right_x, max_disparity, is_training=False, rv=None):
         disp_pre = computeSoftArgMin(left_d)
     return disp_pre
 
-def disp_net(tgt_image, max_disparity):
-#    h=384
-#    w=1280
-    h = tgt_image.get_shape()[1].value
-    w = tgt_image.get_shape()[2].value
-#    left_img = tf.placeholder(tf.float32,shape=(1,h,w,3))
-#    right_img = tf.placeholder(tf.float32,shape=(1,h,w,3))
-    left_img = tf.slice(tgt_image, [0,0,0,0], [1,-1,-1,-1])
-    right_img = tf.slice(tgt_image, [0,0,0,0], [1,-1,-1,-1])
+def disp_net(left_img, right_img, max_disparity):
+    h = left_img.get_shape()[1].value
+    w = left_img.get_shape()[2].value
 
     disp_pre = stereo_model(left_img, right_img, max_disparity, is_training=True)
     disp_pre = tf.expand_dims(disp_pre, 2)

@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from data_loader import DataLoader
-from nets import pose_exp_net
+from posenet import pose_exp_net
 from gcnet import disp_net
 from utils import *
 
@@ -15,9 +15,7 @@ class SfMLearner(object):
     def __init__(self):
         pass
     
-    def build_train_graph(self):
-        # Reset graph so can be called several times (debugging)
-        tf.reset_default_graph()
+    def build_train_graph(self, image_seq_2, image_seq_3, raw_cam_vec_2, raw_cam_vec_3):
         print('Train graph is getting built')
         opt = self.opt
         loader = DataLoader(opt.dataset_dir,
@@ -27,21 +25,21 @@ class SfMLearner(object):
                             opt.num_source,
                             opt.num_scales)
         with tf.name_scope("data_loading"):
-            print('Data is being loaded')
-            tgt_image_2, tgt_image_3, src_image_stack_2, src_image_stack_3, intrinsics_2, intrinsics_3 = loader.load_train_batch()
+            gcnet_image_2 = loader.unpack_image_sequence_gcnet(image_seq_2, opt.img_height, opt.img_width, opt.num_source)
+            gcnet_image_3 = loader.unpack_image_sequence_gcnet(image_seq_3, opt.img_height, opt.img_width, opt.num_source) 
+            print('Data is being augmented')
+            tgt_image_2, src_image_stack_2, intrinsics_2 = loader.augment_new(image_seq_2, raw_cam_vec_2)
+            tgt_image_3, src_image_stack_3, intrinsics_3 = loader.augment_new(image_seq_3, raw_cam_vec_3)
             # Preprocess left images
             tgt_image_2 = self.preprocess_image(tgt_image_2)
             src_image_stack_2 = self.preprocess_image(src_image_stack_2)
-            # Preprocess right images
+            # Preprocess right image for tensorboard
             tgt_image_3 = self.preprocess_image(tgt_image_3)
-            src_image_stack_3 = self.preprocess_image(src_image_stack_3)
 
         # Here Stereo DispNet gets included
         with tf.name_scope("depth_prediction"):
             print('Depth prediction')
-
-            pred_disp, depth_net_endpoints = disp_net(tgt_image_2, opt.max_disparity)
-#            pred_disp = disp_net(tgt_image_2)
+            pred_disp, depth_net_endpoints = disp_net(gcnet_image_2 ,gcnet_image_3, opt.max_disparity)
             pred_depth = 1./pred_disp
 
         with tf.name_scope("pose_and_explainability_prediction"):
@@ -51,7 +49,6 @@ class SfMLearner(object):
                              src_image_stack_2, 
                              do_exp=(opt.explain_reg_weight > 0),
                              is_training=True)
-            print('Pose prediction finished')
             
 
         with tf.name_scope("compute_loss"):
@@ -60,6 +57,7 @@ class SfMLearner(object):
             exp_loss = 0
             smooth_loss = 0
             tgt_image_all = []
+            tgt_image_all_3 = []
             src_image_stack_all = []
             proj_image_stack_all = []
             proj_error_stack_all = []
@@ -72,6 +70,8 @@ class SfMLearner(object):
                 # Scale the source and target images for computing loss at the 
                 # according scale.
                 curr_tgt_image = tf.image.resize_area(tgt_image_2, 
+                    [int(opt.img_height/(2**s)), int(opt.img_width/(2**s))])
+                curr_tgt_image_3 = tf.image.resize_area(tgt_image_3, 
                     [int(opt.img_height/(2**s)), int(opt.img_width/(2**s))])                
                 curr_src_image_stack = tf.image.resize_area(src_image_stack_2, 
                     [int(opt.img_height/(2**s)), int(opt.img_width/(2**s))])
@@ -119,6 +119,7 @@ class SfMLearner(object):
                             exp_mask_stack = tf.concat([exp_mask_stack, 
                                 tf.expand_dims(curr_exp[:,:,:,1], -1)], axis=3)
                 tgt_image_all.append(curr_tgt_image)
+                tgt_image_all_3.append(curr_tgt_image_3)
                 src_image_stack_all.append(curr_src_image_stack)
                 proj_image_stack_all.append(proj_image_stack)
                 proj_error_stack_all.append(proj_error_stack)
@@ -127,12 +128,13 @@ class SfMLearner(object):
             total_loss = pixel_loss + smooth_loss + exp_loss
 
         with tf.name_scope("train_op"):
-            train_vars = [var for var in tf.trainable_variables()]
+            # train_vars = [var for var in tf.trainable_variables()]
             optim = tf.train.AdamOptimizer(opt.learning_rate, opt.beta1)
             # self.grads_and_vars = optim.compute_gradients(total_loss, 
             #                                               var_list=train_vars)
             # self.train_op = optim.apply_gradients(self.grads_and_vars)
-            self.train_op = slim.learning.create_train_op(total_loss, optim)
+            posenet_var = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="pose_exp_net")
+            self.train_op = slim.learning.create_train_op(total_loss, optim, variables_to_train=posenet_var)
             self.global_step = tf.Variable(0, 
                                            name='global_step', 
                                            trainable=False)
@@ -148,6 +150,7 @@ class SfMLearner(object):
         self.exp_loss = exp_loss
         self.smooth_loss = smooth_loss
         self.tgt_image_all = tgt_image_all
+        self.tgt_image_all_3 = tgt_image_all_3
         self.src_image_stack_all = src_image_stack_all
         self.proj_image_stack_all = proj_image_stack_all
         self.proj_error_stack_all = proj_error_stack_all
@@ -190,10 +193,14 @@ class SfMLearner(object):
         tf.summary.scalar("smooth_loss", self.smooth_loss)
         tf.summary.scalar("exp_loss", self.exp_loss)
         for s in range(opt.num_scales):
-            tf.summary.histogram("scale%d_depth" % s, self.pred_depth[s])
-#            tf.summary.image('scale%d_disparity_image' % s, 1./self.pred_depth[s])
+            tf.summary.histogram("scale%d_depth" % s, self.pred_depth)
+            pred_depth_sum = tf.expand_dims(self.pred_depth,0)
+            pred_depth_sum = tf.expand_dims(pred_depth_sum,3)
+            tf.summary.image('scale%d_disparity_image' % s, 1./pred_depth_sum)
             tf.summary.image('scale%d_target_image' % s, \
                              self.deprocess_image(self.tgt_image_all[s]))
+            tf.summary.image('scale%d_target_image_3' % s, \
+                             self.deprocess_image(self.tgt_image_all_3[s]))
             for i in range(opt.num_source):
                 if opt.explain_reg_weight > 0:
                     tf.summary.image(
@@ -216,19 +223,24 @@ class SfMLearner(object):
         #     tf.summary.histogram(var.op.name + "/values", var)
         # for grad, var in self.grads_and_vars:
         #     tf.summary.histogram(var.op.name + "/gradients", grad)
-        self.merged_summary = tf.summary.merge_all()
-        writer = tf.summary.FileWriter(opt.checkpoint_dir)
         
         
         
 
     def train(self, opt):
+        # Reset graph so can be called several times (debugging)
+        tf.reset_default_graph()
         opt.num_source = opt.seq_length - 1
-        # TODO: currently fixed to 4
+        # TODO: currently fixed to 1, as GCNet doesn't include multiscales
         opt.num_scales = 1
         self.opt = opt
-        self.build_train_graph()
+        image_seq_2 = tf.placeholder(tf.float32,shape=(1,opt.img_height,opt.seq_length*opt.img_width,3))
+        image_seq_3 = tf.placeholder(tf.float32,shape=(1,opt.img_height,opt.seq_length*opt.img_width,3))
+        cam_vec_2 = tf.placeholder(tf.float32, shape=(9))
+        cam_vec_3 = tf.placeholder(tf.float32, shape=(9))
+        self.build_train_graph(image_seq_2, image_seq_3, cam_vec_2, cam_vec_3)
         self.collect_summaries()
+        
         print('graph built')
         with tf.name_scope("parameter_count"):
             parameter_count = tf.reduce_sum([tf.reduce_prod(tf.shape(v)) \
@@ -237,6 +249,7 @@ class SfMLearner(object):
                                     [self.global_step],
                                      max_to_keep=10)
         
+        # Load GCnet variables
         gcnet_var = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="stereo_network")
         self.gcnet_saver = tf.train.Saver(var_list = gcnet_var)
         
@@ -250,7 +263,7 @@ class SfMLearner(object):
             #INIT
             restore_path=tf.train.latest_checkpoint(opt.gcnet_model_dir)
             self.gcnet_saver.restore(sess, restore_path)
-            print('Trainable variables: ')
+#            print('Trainable variables: ')
 #            for var in tf.trainable_variables():
 #                print(var.name)
             print("parameter_count =", sess.run(parameter_count))
@@ -262,8 +275,28 @@ class SfMLearner(object):
                 print("Resume training from previous checkpoint: %s" % checkpoint)
 #                self.saver.restore(sess, checkpoint)
             print('Checkpoints checked')
+            
+            # Load file lists
+            gc_dataloader = DataLoader(opt.dataset_dir,
+                            opt.batch_size,
+                            opt.img_height,
+                            opt.img_width,
+                            opt.num_source,
+                            opt.num_scales)
+            all_list_2 = gc_dataloader.format_file_list(opt.dataset_dir, 'train', 2)
+            all_list_3 = gc_dataloader.format_file_list(opt.dataset_dir, 'train', 3)
+             
+            # Shuffle the files
+            file_paths_2, file_paths_3, cam_paths_2, cam_paths_3 = gc_dataloader.shuffle_files(all_list_2, all_list_3)
+            num_files = len(file_paths_2)
+            
             start_time = time.time()
             for step in range(1, opt.max_steps):
+                img_seq_l, img_seq_r = gc_dataloader.load_gcnet_img(file_paths_2[(step-1)%num_files], file_paths_3[(step-1)%num_files])
+                raw_cam_vec_2 = gc_dataloader.load_raw_cam_vec(cam_paths_2[(step-1)%num_files])
+                raw_cam_vec_3 = gc_dataloader.load_raw_cam_vec(cam_paths_3[(step-1)%num_files])
+                img_seq_l=np.expand_dims(img_seq_l,axis=0).astype('float32')
+                img_seq_r=np.expand_dims(img_seq_r,axis=0).astype('float32')
                 fetches = {
                     "train": self.train_op,
                     "global_step": self.global_step,
@@ -273,8 +306,9 @@ class SfMLearner(object):
                 if step % opt.summary_freq == 0:
                     fetches["loss"] = self.total_loss
                     fetches["summary"] = sv.summary_op
-
-                results = sess.run(fetches)
+                feed_d = {image_seq_2: img_seq_l, image_seq_3: img_seq_r, cam_vec_2: raw_cam_vec_2, cam_vec_3: raw_cam_vec_3}
+                results = sess.run(fetches,
+                                   feed_dict= feed_d)
                 gs = results["global_step"]
 
                 if step % opt.summary_freq == 0:
