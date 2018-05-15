@@ -77,11 +77,11 @@ class DataLoader(object):
         intrinsics = tf.stack([r1, r2, r3], axis=1)
         return intrinsics
 
-    def data_augmentation(self, im, intrinsics, out_h, out_w):
+    def data_augmentation(self, im, intrinsics, out_h, out_w, seed):
         # Random scaling
-        def random_scaling(im, intrinsics):
+        def random_scaling(im, intrinsics, seed):
             batch_size, in_h, in_w, _ = im.get_shape().as_list()
-            scaling = tf.random_uniform([2], 1, 1.15)
+            scaling = tf.random_uniform([2], 1, 1.15, seed=seed)
             x_scaling = scaling[0]
             y_scaling = scaling[1]
             out_h = tf.cast(in_h * y_scaling, dtype=tf.int32)
@@ -95,11 +95,11 @@ class DataLoader(object):
             return im, intrinsics
 
         # Random cropping
-        def random_cropping(im, intrinsics, out_h, out_w):
+        def random_cropping(im, intrinsics, out_h, out_w, seed):
             # batch_size, in_h, in_w, _ = im.get_shape().as_list()
             batch_size, in_h, in_w, _ = tf.unstack(tf.shape(im))
-            offset_y = tf.random_uniform([1], 0, in_h - out_h + 1, dtype=tf.int32)[0]
-            offset_x = tf.random_uniform([1], 0, in_w - out_w + 1, dtype=tf.int32)[0]
+            offset_y = tf.random_uniform([1], 0, in_h - out_h + 1, dtype=tf.int32, seed=seed)[0]
+            offset_x = tf.random_uniform([1], 0, in_w - out_w + 1, dtype=tf.int32, seed=seed)[0]
             im = tf.image.crop_to_bounding_box(
                 im, offset_y, offset_x, out_h, out_w)
             fx = intrinsics[:,0,0]
@@ -108,8 +108,8 @@ class DataLoader(object):
             cy = intrinsics[:,1,2] - tf.cast(offset_y, dtype=tf.float32)
             intrinsics = self.make_intrinsics_matrix(fx, fy, cx, cy)
             return im, intrinsics
-        im, intrinsics = random_scaling(im, intrinsics)
-        im, intrinsics = random_cropping(im, intrinsics, out_h, out_w)
+        im, intrinsics = random_scaling(im, intrinsics, seed)
+        im, intrinsics = random_cropping(im, intrinsics, out_h, out_w, seed)
         im = tf.cast(im, dtype=tf.uint8)
         return im, intrinsics
 
@@ -220,7 +220,7 @@ class DataLoader(object):
         img_file_list_2_sh, img_file_list_3_sh, cam_file_list_2_sh, cam_file_list_3_sh = zip(*file_lists)
         return img_file_list_2_sh, img_file_list_3_sh, cam_file_list_2_sh, cam_file_list_3_sh
 
-    def augment_new(self, image_seq, raw_cam_vec):
+    def augment_new(self, image_seq, raw_cam_vec, seed):
         # Unpack image sequence
         tgt_image, src_image_stack = \
             self.unpack_image_sequence(
@@ -237,7 +237,7 @@ class DataLoader(object):
         # Data augmentation
         image_all = tf.concat([tgt_image, src_image_stack], axis=3)
         image_all, intrinsics = self.data_augmentation(
-            image_all, intrinsics, self.img_height, self.img_width)
+            image_all, intrinsics, self.img_height, self.img_width, seed)
         tgt_image = image_all[:, :, :, :3]
         src_image_stack = image_all[:, :, :, 3:]
         intrinsics = self.get_multi_scale_intrinsics(
@@ -248,4 +248,11 @@ class DataLoader(object):
         self.steps_per_epoch = int(
             len(file_list['image_file_list'])//1)
         return tgt_image, src_image_stack, intrinsics
+    
+    def process_img_seq(self, img_seq_2, img_seq_3, raw_cam_vec_2, raw_cam_vec_3):
+        seed = random.randint(1,2**31 - 1)
+        tgt_image_2, src_image_stack_2, intrinsics_2 = self.augment_new(img_seq_2, raw_cam_vec_2, seed)
+        tgt_image_3, src_image_stack_3, intrinsics_3 = self.augment_new(img_seq_3, raw_cam_vec_3, seed)
+
+        return [tgt_image_2, tgt_image_3], [src_image_stack_2, src_image_stack_3], [intrinsics_2, intrinsics_3]
     

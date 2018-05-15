@@ -361,16 +361,34 @@ def stereo_model(left_x, right_x, max_disparity, is_training=False, rv=None):
         disp_pre = computeSoftArgMin(left_d)
     return disp_pre
 
-def disp_net(left_img, right_img, max_disparity):
-    h = left_img.get_shape()[1].value
-    w = left_img.get_shape()[2].value
+def scale_down(tensor, factor):
+    h = tensor.get_shape()[0].value
+    w = tensor.get_shape()[1].value
+    out_h = tf.cast(h/factor, dtype=tf.int32)
+    out_w = tf.cast(w/factor, dtype=tf.int32)
+    # second possibility is to use tf.image.resize_area()
+    tensor_exp = tf.expand_dims(tf.expand_dims(tensor,0),-1)
+    tensor_scaled = tf.image.resize_area(tensor_exp,[out_h,out_w])
+    tensor_scaled = tf.squeeze(tensor_scaled)
+    return tensor_scaled
 
-    disp_pre = stereo_model(left_img, right_img, max_disparity, is_training=True)
+def disp_net(left_img, right_img, max_disparity):
+#    h = left_img.get_shape()[1].value
+#    w = left_img.get_shape()[2].value
+
+    disp_pre = stereo_model((left_img * 255.0 - 0.5) / 0.5, (right_img * 255.0 -0.5) / 0.5, max_disparity, is_training=True)
     disp_pre = tf.expand_dims(disp_pre, 2)
-    disp_pre = tf.image.resize_images(disp_pre, [h, w], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+#    disp_pre = tf.image.resize_images(disp_pre, [h, w], tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 #    disp_pre = DISP_SCALING * disp_pre + MIN_DISP
+    # Scale down disparity map for multi scale loss, here subsampling is used
     disp1 = tf.stop_gradient(tf.squeeze(disp_pre))
-     
+    disp2 = scale_down(disp1,2)
+    disp3 = scale_down(disp2,2)
+    disp4 = scale_down(disp3,2)
+    print('disp1 shape: ' + str(disp1.get_shape()))
+    print('disp2 shape: ' + str(disp2.get_shape()))
+    print('disp3 shape: ' + str(disp3.get_shape()))
+    print('disp4 shape: ' + str(disp4.get_shape()))
     
     endpoints = 0
-    return disp1, endpoints
+    return [disp1, disp2, disp3, disp4], endpoints

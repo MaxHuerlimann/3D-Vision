@@ -25,30 +25,34 @@ class SfMLearner(object):
                             opt.num_source,
                             opt.num_scales)
         with tf.name_scope("data_loading"):
-            gcnet_image_2 = loader.unpack_image_sequence_gcnet(image_seq_2, opt.img_height, opt.img_width, opt.num_source)
-            gcnet_image_3 = loader.unpack_image_sequence_gcnet(image_seq_3, opt.img_height, opt.img_width, opt.num_source) 
+#            gcnet_image_2 = loader.unpack_image_sequence_gcnet(image_seq_2, opt.img_height, opt.img_width, opt.num_source)
+#            gcnet_image_3 = loader.unpack_image_sequence_gcnet(image_seq_3, opt.img_height, opt.img_width, opt.num_source) 
             print('Data is being augmented')
-            tgt_image_2, src_image_stack_2, intrinsics_2 = loader.augment_new(image_seq_2, raw_cam_vec_2)
-            tgt_image_3, src_image_stack_3, intrinsics_3 = loader.augment_new(image_seq_3, raw_cam_vec_3)
+            tgt_images, src_image_stacks, intrinsics = loader.process_img_seq(image_seq_2, image_seq_3, raw_cam_vec_2, raw_cam_vec_3)
+#            tgt_image_3, src_image_stack_3, intrinsics_3 = loader.process_img_seq(image_seq_3, raw_cam_vec_3)
             # Preprocess left images
-            tgt_image_2 = self.preprocess_image(tgt_image_2)
-            src_image_stack_2 = self.preprocess_image(src_image_stack_2)
-            # Preprocess right image for tensorboard
-            tgt_image_3 = self.preprocess_image(tgt_image_3)
+            tgt_image_2 = self.preprocess_image(tgt_images[0])
+            src_image_stack_2 = self.preprocess_image(src_image_stacks[0])
+            intrinsics_2 = intrinsics[0]
+            # Preprocess right images
+            tgt_image_3 = self.preprocess_image(tgt_images[1])
+#            src_image_stack_3 = self.preprocess_image(src_image_stacks[1])
+#            intrinsics_3 = intrinsics[1]
 
         # Here Stereo DispNet gets included
         with tf.name_scope("depth_prediction"):
             print('Depth prediction')
-            pred_disp, depth_net_endpoints = disp_net(gcnet_image_2 ,gcnet_image_3, opt.max_disparity)
-            pred_depth = 1./pred_disp
+            pred_disp, depth_net_endpoints = disp_net(tgt_image_2 ,tgt_image_3, opt.max_disparity)
+            pred_depth = [1./d for d in pred_disp]
 
         with tf.name_scope("pose_and_explainability_prediction"):
-            print('Pose prediction')
+            print('Pose prediction started')
             pred_poses, pred_exp_logits, pose_exp_net_endpoints = \
                 pose_exp_net(tgt_image_2,
                              src_image_stack_2, 
                              do_exp=(opt.explain_reg_weight > 0),
                              is_training=True)
+            print('Pose prediction finished')
             
 
         with tf.name_scope("compute_loss"):
@@ -78,13 +82,13 @@ class SfMLearner(object):
 
                 if opt.smooth_weight > 0:
                     smooth_loss += opt.smooth_weight/(2**s) * \
-                        self.compute_smooth_loss(pred_disp)
+                        self.compute_smooth_loss(pred_disp[s])
 
                 for i in range(opt.num_source):
                     # Inverse warp the source image to the target image frame
                     curr_proj_image = projective_inverse_warp(
                         curr_src_image_stack[:,:,:,3*i:3*(i+1)], 
-                        tf.expand_dims(pred_depth, 0), 
+                        tf.expand_dims(pred_depth[s], 0), 
                         pred_poses[:,i,:], 
                         intrinsics_2[:,s,:,:])
                     curr_proj_error = tf.abs(curr_proj_image - curr_tgt_image)
@@ -193,8 +197,8 @@ class SfMLearner(object):
         tf.summary.scalar("smooth_loss", self.smooth_loss)
         tf.summary.scalar("exp_loss", self.exp_loss)
         for s in range(opt.num_scales):
-            tf.summary.histogram("scale%d_depth" % s, self.pred_depth)
-            pred_depth_sum = tf.expand_dims(self.pred_depth,0)
+            tf.summary.histogram("scale%d_depth" % s, self.pred_depth[s])
+            pred_depth_sum = tf.expand_dims(self.pred_depth[s],0)
             pred_depth_sum = tf.expand_dims(pred_depth_sum,3)
             tf.summary.image('scale%d_disparity_image' % s, 1./pred_depth_sum)
             tf.summary.image('scale%d_target_image' % s, \
@@ -249,7 +253,6 @@ class SfMLearner(object):
                                     [self.global_step],
                                      max_to_keep=10)
         
-        # Load gcnet variables
         gcnet_var = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="stereo_network")
         self.gcnet_saver = tf.train.Saver(var_list = gcnet_var)
         
@@ -288,15 +291,15 @@ class SfMLearner(object):
              
             # Shuffle the files
             file_paths_2, file_paths_3, cam_paths_2, cam_paths_3 = gc_dataloader.shuffle_files(all_list_2, all_list_3)
-            num_files = len(file_paths_2)      
-
+            num_files = len(file_paths_2)
+            
             start_time = time.time()
             for step in range(1, opt.max_steps):
-                img_seq_l, img_seq_r = gc_dataloader.load_gcnet_img(file_paths_2[(step-1)%num_files], file_paths_3[(step-1)%num_files])
+                gcnet_img_l, gcnet_img_r = gc_dataloader.load_gcnet_img(file_paths_2[(step-1)%num_files], file_paths_3[(step-1)%num_files])
                 raw_cam_vec_2 = gc_dataloader.load_raw_cam_vec(cam_paths_2[(step-1)%num_files])
                 raw_cam_vec_3 = gc_dataloader.load_raw_cam_vec(cam_paths_3[(step-1)%num_files])
-                img_seq_l=np.expand_dims(img_seq_l,axis=0).astype('float32')
-                img_seq_r=np.expand_dims(img_seq_r,axis=0).astype('float32')
+                gcnet_img_l=np.expand_dims(gcnet_img_l,axis=0).astype('float32')
+                gcnet_img_r=np.expand_dims(gcnet_img_r,axis=0).astype('float32')
                 fetches = {
                     "train": self.train_op,
                     "global_step": self.global_step,
@@ -306,7 +309,7 @@ class SfMLearner(object):
                 if step % opt.summary_freq == 0:
                     fetches["loss"] = self.total_loss
                     fetches["summary"] = sv.summary_op
-                feed_d = {image_seq_2: img_seq_l, image_seq_3: img_seq_r, cam_vec_2: raw_cam_vec_2, cam_vec_3: raw_cam_vec_3}
+                feed_d = {image_seq_2: gcnet_img_l, image_seq_3: gcnet_img_r, cam_vec_2: raw_cam_vec_2, cam_vec_3: raw_cam_vec_3}
                 results = sess.run(fetches,
                                    feed_dict= feed_d)
                 gs = results["global_step"]
