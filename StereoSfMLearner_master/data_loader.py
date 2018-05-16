@@ -77,6 +77,41 @@ class DataLoader(object):
         intrinsics = tf.stack([r1, r2, r3], axis=1)
         return intrinsics
 
+    def depth_augmentation(self, im, intrinsics, out_h, out_w, seed):
+        # Random scaling
+        def random_scaling(im, intrinsics, seed):
+            batch_size, in_h, in_w, _ = im.get_shape().as_list()
+            scaling = tf.random_uniform([2], 1, 1.15, seed=seed)
+            x_scaling = scaling[0]
+            y_scaling = scaling[1]
+            out_h = tf.cast(in_h * y_scaling, dtype=tf.int32)
+            out_w = tf.cast(in_w * x_scaling, dtype=tf.int32)
+            im = tf.image.resize_area(im, [out_h, out_w])
+            fx = intrinsics[:,0,0] * x_scaling
+            fy = intrinsics[:,1,1] * y_scaling
+            cx = intrinsics[:,0,2] * x_scaling
+            cy = intrinsics[:,1,2] * y_scaling
+            intrinsics = self.make_intrinsics_matrix(fx, fy, cx, cy)
+            return im, intrinsics
+
+        # Random cropping
+        def random_cropping(im, intrinsics, out_h, out_w, seed):
+            # batch_size, in_h, in_w, _ = im.get_shape().as_list()
+            batch_size, in_h, in_w, _ = tf.unstack(tf.shape(im))
+            offset_y = tf.random_uniform([1], 0, in_h - out_h + 1, dtype=tf.int32, seed=seed)[0]
+            offset_x = tf.random_uniform([1], 0, in_w - out_w + 1, dtype=tf.int32, seed=seed)[0]
+            im = tf.image.crop_to_bounding_box(
+                im, offset_y, offset_x, out_h, out_w)
+            fx = intrinsics[:,0,0]
+            fy = intrinsics[:,1,1]
+            cx = intrinsics[:,0,2] - tf.cast(offset_x, dtype=tf.float32)
+            cy = intrinsics[:,1,2] - tf.cast(offset_y, dtype=tf.float32)
+            intrinsics = self.make_intrinsics_matrix(fx, fy, cx, cy)
+            return im, intrinsics
+        im, intrinsics = random_scaling(im, intrinsics, seed)
+        im, intrinsics = random_cropping(im, intrinsics, out_h, out_w, seed)
+        return im, intrinsics
+
     def data_augmentation(self, im, intrinsics, out_h, out_w, seed):
         # Random scaling
         def random_scaling(im, intrinsics, seed):
@@ -199,8 +234,10 @@ class DataLoader(object):
         return tgt_image
     
     def load_gcnet_img(self, file_path_left, file_path_right):
-        img_seq_left = cv2.imread(file_path_left)
-        img_seq_right = cv2.imread(file_path_right)
+        img_seq_left = cv2.imread(file_path_left, 1)
+        img_seq_left = cv2.cvtColor(img_seq_left, cv2.COLOR_BGR2RGB)
+        img_seq_right = cv2.imread(file_path_right, 1)
+        img_seq_right = cv2.cvtColor(img_seq_right, cv2.COLOR_BGR2RGB)
         return img_seq_left, img_seq_right
     
     def load_raw_cam_vec(self, file_path):
@@ -220,7 +257,7 @@ class DataLoader(object):
         img_file_list_2_sh, img_file_list_3_sh, cam_file_list_2_sh, cam_file_list_3_sh = zip(*file_lists)
         return img_file_list_2_sh, img_file_list_3_sh, cam_file_list_2_sh, cam_file_list_3_sh
 
-    def augment_new(self, image_seq, raw_cam_vec, seed):
+    def augment_new(self, image_seq, raw_cam_vec, depth, seed):
         # Unpack image sequence
         tgt_image, src_image_stack = \
             self.unpack_image_sequence(
@@ -234,6 +271,9 @@ class DataLoader(object):
         tgt_image = tf.expand_dims(tgt_image, 0)
         intrinsics = tf.expand_dims(intrinsics, 0)
         
+        # Augment depth
+        depth_augm, _ = self.depth_augmentation(
+                depth, intrinsics, self.img_height, self.img_width, seed)
         # Data augmentation
         image_all = tf.concat([tgt_image, src_image_stack], axis=3)
         image_all, intrinsics = self.data_augmentation(
@@ -247,12 +287,38 @@ class DataLoader(object):
         file_list = self.format_file_list(self.dataset_dir, 'train', 2)
         self.steps_per_epoch = int(
             len(file_list['image_file_list'])//1)
-        return tgt_image, src_image_stack, intrinsics
-    
-    def process_img_seq(self, img_seq_2, img_seq_3, raw_cam_vec_2, raw_cam_vec_3):
-        seed = random.randint(1,2**31 - 1)
-        tgt_image_2, src_image_stack_2, intrinsics_2 = self.augment_new(img_seq_2, raw_cam_vec_2, seed)
-        tgt_image_3, src_image_stack_3, intrinsics_3 = self.augment_new(img_seq_3, raw_cam_vec_3, seed)
+        return tgt_image, src_image_stack, intrinsics, depth_augm
 
-        return [tgt_image_2, tgt_image_3], [src_image_stack_2, src_image_stack_3], [intrinsics_2, intrinsics_3]
+    def scale_down(self, tensor, factor):
+        print(tensor)
+        h = tensor.get_shape()[0].value
+        w = tensor.get_shape()[1].value
+        out_h = tf.cast(h/factor, dtype=tf.int32)
+        out_w = tf.cast(w/factor, dtype=tf.int32)
+        # second possibility is to use tf.image.resize_area()
+        tensor_exp = tf.expand_dims(tf.expand_dims(tensor,0),-1)
+        tensor_scaled = tf.image.resize_area(tensor_exp,[out_h,out_w])
+        tensor_scaled = tf.squeeze(tensor_scaled)
+        return tensor_scaled
+    
+    def process_img_seq(self, img_seq_2, img_seq_3, raw_cam_vec_2, raw_cam_vec_3, depth):
+        seed = random.randint(1,2**31 - 1)
+        # Expand depth tensor from shape [h, w] to [1,h,w,1], so it can be augmented
+        depth = tf.expand_dims(tf.expand_dims(depth, 0), -1)
+        # Augment data
+        tgt_image_2, src_image_stack_2, intrinsics_2, depth_augm = self.augment_new(img_seq_2, raw_cam_vec_2, depth, seed)
+        tgt_image_3, src_image_stack_3, intrinsics_3, _ = self.augment_new(img_seq_3, raw_cam_vec_3, depth, seed)
+        # Scale and recast depth to float
+        depth_augm = tf.cast(tf.squeeze(depth_augm), dtype=tf.float32)
+        depth_augm_scaled = []
+        depth_augm_scaled.append(depth_augm)
+        depth_augm_scaled.append(self.scale_down(depth_augm_scaled[0], 2))
+        depth_augm_scaled.append(self.scale_down(depth_augm_scaled[1], 2))
+        depth_augm_scaled.append(self.scale_down(depth_augm_scaled[2], 2))
+        print('depth scale 1: ' + str(depth_augm_scaled[0].get_shape()))
+        print('depth scale 2: ' + str(depth_augm_scaled[1].get_shape()))
+        print('depth scale 3: ' + str(depth_augm_scaled[2].get_shape()))
+        print('depth scale 4: ' + str(depth_augm_scaled[3].get_shape()))
+
+        return [tgt_image_2, tgt_image_3], [src_image_stack_2, src_image_stack_3], [intrinsics_2, intrinsics_3], depth_augm_scaled
     

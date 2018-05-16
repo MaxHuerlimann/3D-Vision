@@ -366,7 +366,6 @@ def scale_down(tensor, factor):
     w = tensor.get_shape()[1].value
     out_h = tf.cast(h/factor, dtype=tf.int32)
     out_w = tf.cast(w/factor, dtype=tf.int32)
-    # tensor_scaled = tensor[::factor,::factor]
     # second possibility is to use tf.image.resize_area()
     tensor_exp = tf.expand_dims(tf.expand_dims(tensor,0),-1)
     tensor_scaled = tf.image.resize_area(tensor_exp,[out_h,out_w])
@@ -374,12 +373,8 @@ def scale_down(tensor, factor):
     return tensor_scaled
 
 def disp_net(left_img, right_img, max_disparity):
-    if(isinstance(left_img, list)):
-        h = left_img[0].get_shape()[1].value
-        w = left_img[0].get_shape()[2].value
-    else:
-        h = left_img.get_shape()[1].value
-        w = left_img.get_shape()[2].value
+    h = left_img.get_shape()[1].value
+    w = left_img.get_shape()[2].value
 
 
     disp_pre = stereo_model(left_img, right_img, max_disparity, is_training=False)
@@ -388,19 +383,14 @@ def disp_net(left_img, right_img, max_disparity):
 #    disp_pre = DISP_SCALING * disp_pre + MIN_DISP
     # Scale down disparity map for multi scale loss, here subsampling is used
     disp1 = tf.stop_gradient(tf.squeeze(disp_pre))
-    disp2 = scale_down(disp1,2)
-    disp3 = scale_down(disp2,2)
-    disp4 = scale_down(disp3,2)
-    # second possibility is to use tf.image.resize_area()
-    #disp = tf.expand_dims(tf.expand_dims(disp1,0),-1)
-    #disp2 = tf.image.resize_area(disp,[h/2,w/2])
-    #disp3 = tf.image.resize_area(disp,[h/4,w/4])
-    #disp4 = tf.image.resize_area(disp,[h/8,w/8])
-    #
+#    disp2 = scale_down(disp1,2)
+#    disp3 = scale_down(disp2,2)
+#    disp4 = scale_down(disp3,2)
+
     print('disp1 shape: ' + str(disp1.get_shape()))
-    print('disp2 shape: ' + str(disp2.get_shape()))
-    print('disp3 shape: ' + str(disp3.get_shape()))
-    print('disp4 shape: ' + str(disp4.get_shape()))
+#    print('disp2 shape: ' + str(disp2.get_shape()))
+#    print('disp3 shape: ' + str(disp3.get_shape()))
+#    print('disp4 shape: ' + str(disp4.get_shape()))
     
     endpoints = 0
-    return [disp1, disp2, disp3, disp4], endpoints
+    return disp1, endpoints

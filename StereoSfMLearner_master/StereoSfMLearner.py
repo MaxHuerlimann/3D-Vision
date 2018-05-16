@@ -2,6 +2,7 @@ from __future__ import division
 import os
 import time
 import math
+import cv2
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
@@ -24,26 +25,30 @@ class SfMLearner(object):
                             opt.img_width,
                             opt.num_source,
                             opt.num_scales)
-        with tf.name_scope("data_loading"):
-#            gcnet_image_2 = loader.unpack_image_sequence_gcnet(image_seq_2, opt.img_height, opt.img_width, opt.num_source)
-#            gcnet_image_3 = loader.unpack_image_sequence_gcnet(image_seq_3, opt.img_height, opt.img_width, opt.num_source) 
+        with tf.name_scope("data_unpacking"):
+            print('Choose gcnet image')
+            image_seq_2 = self.preprocess_image(image_seq_2)
+            image_seq_3 = self.preprocess_image(image_seq_3)
+            gcnet_img_2 = loader.unpack_image_sequence_gcnet(image_seq_2, opt.img_height, opt.img_width, opt.num_source)
+            gcnet_img_3 = loader.unpack_image_sequence_gcnet(image_seq_3, opt.img_height, opt.img_width, opt.num_source)
+            tgt_image_3 = gcnet_img_3
+            image_seq_2 = self.deprocess_image(image_seq_2)
+            image_seq_3 = self.deprocess_image(image_seq_3)
+
+        # Depth prediction with gcnet 
+        with tf.name_scope("depth_prediction"):
+            print('Depth prediction')
+            pred_disp, depth_net_endpoints = disp_net(gcnet_img_2 ,gcnet_img_3, opt.max_disparity)
+            print(pred_disp.get_shape())
+            pred_depth = 1./pred_disp
+
+        with tf.name_scope("data_augmentation"):
             print('Data is being augmented')
-            tgt_images, src_image_stacks, intrinsics = loader.process_img_seq(image_seq_2, image_seq_3, raw_cam_vec_2, raw_cam_vec_3)
-#            tgt_image_3, src_image_stack_3, intrinsics_3 = loader.process_img_seq(image_seq_3, raw_cam_vec_3)
+            tgt_images, src_image_stacks, intrinsics, pred_depth = loader.process_img_seq(image_seq_2, image_seq_3, raw_cam_vec_2, raw_cam_vec_3, pred_depth)
             # Preprocess left images
             tgt_image_2 = self.preprocess_image(tgt_images[0])
             src_image_stack_2 = self.preprocess_image(src_image_stacks[0])
             intrinsics_2 = intrinsics[0]
-            # Preprocess right images
-            tgt_image_3 = self.preprocess_image(tgt_images[1])
-#            src_image_stack_3 = self.preprocess_image(src_image_stacks[1])
-#            intrinsics_3 = intrinsics[1]
-
-        # Here Stereo DispNet gets included
-        with tf.name_scope("depth_prediction"):
-            print('Depth prediction')
-            pred_disp, depth_net_endpoints = disp_net(tgt_image_2 ,tgt_image_3, opt.max_disparity)
-            pred_depth = [1./d for d in pred_disp]
 
         with tf.name_scope("pose_and_explainability_prediction"):
             print('Pose prediction started')
@@ -204,7 +209,7 @@ class SfMLearner(object):
             tf.summary.image('scale%d_target_image' % s, \
                              self.deprocess_image(self.tgt_image_all[s]))
             tf.summary.image('scale%d_target_image_3' % s, \
-                             self.deprocess_image(self.tgt_image_all_3[s]))
+                             self.tgt_image_all_3[s])
             for i in range(opt.num_source):
                 if opt.explain_reg_weight > 0:
                     tf.summary.image(
@@ -238,8 +243,8 @@ class SfMLearner(object):
         # TODO: currently fixed to 1, as GCNet doesn't include multiscales
         opt.num_scales = 1
         self.opt = opt
-        image_seq_2 = tf.placeholder(tf.float32,shape=(1,opt.img_height,opt.seq_length*opt.img_width,3))
-        image_seq_3 = tf.placeholder(tf.float32,shape=(1,opt.img_height,opt.seq_length*opt.img_width,3))
+        image_seq_2 = tf.placeholder(tf.uint8,shape=(1,opt.img_height,opt.seq_length*opt.img_width,3))
+        image_seq_3 = tf.placeholder(tf.uint8,shape=(1,opt.img_height,opt.seq_length*opt.img_width,3))
         cam_vec_2 = tf.placeholder(tf.float32, shape=(9))
         cam_vec_3 = tf.placeholder(tf.float32, shape=(9))
         self.build_train_graph(image_seq_2, image_seq_3, cam_vec_2, cam_vec_3)
@@ -253,6 +258,7 @@ class SfMLearner(object):
                                     [self.global_step],
                                      max_to_keep=10)
         
+        # Load gcnet saver
         gcnet_var = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="stereo_network")
         self.gcnet_saver = tf.train.Saver(var_list = gcnet_var)
         
@@ -263,7 +269,7 @@ class SfMLearner(object):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         with sv.managed_session(config=config) as sess:
-            #INIT
+            # Restore gcnet variables
             restore_path=tf.train.latest_checkpoint(opt.gcnet_model_dir)
             self.gcnet_saver.restore(sess, restore_path)
 #            print('Trainable variables: ')
@@ -298,8 +304,8 @@ class SfMLearner(object):
                 gcnet_img_l, gcnet_img_r = gc_dataloader.load_gcnet_img(file_paths_2[(step-1)%num_files], file_paths_3[(step-1)%num_files])
                 raw_cam_vec_2 = gc_dataloader.load_raw_cam_vec(cam_paths_2[(step-1)%num_files])
                 raw_cam_vec_3 = gc_dataloader.load_raw_cam_vec(cam_paths_3[(step-1)%num_files])
-                gcnet_img_l=np.expand_dims(gcnet_img_l,axis=0).astype('float32')
-                gcnet_img_r=np.expand_dims(gcnet_img_r,axis=0).astype('float32')
+                gcnet_img_l=np.expand_dims(gcnet_img_l,axis=0)
+                gcnet_img_r=np.expand_dims(gcnet_img_r,axis=0)
                 fetches = {
                     "train": self.train_op,
                     "global_step": self.global_step,
@@ -328,6 +334,9 @@ class SfMLearner(object):
                     self.save(sess, opt.checkpoint_dir, 'latest')
 
                 if step % self.steps_per_epoch == 0:
+                    self.save(sess, opt.checkpoint_dir, gs)
+
+                if step % opt.save_model_freq == 0:
                     self.save(sess, opt.checkpoint_dir, gs)
 
     def build_depth_test_graph(self):
@@ -361,11 +370,11 @@ class SfMLearner(object):
     def preprocess_image(self, image):
         # Assuming input image is uint8
         image = tf.image.convert_image_dtype(image, dtype=tf.float32)
-        return image * 2. -1.
+        return image * 2. -1. 
 
     def deprocess_image(self, image):
         # Assuming input image is float32
-        image = (image + 1.)/2.
+        image = (image + 1) / 2.
         return tf.image.convert_image_dtype(image, dtype=tf.uint8)
 
     def setup_inference(self, 
