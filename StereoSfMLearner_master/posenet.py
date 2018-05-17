@@ -20,7 +20,7 @@ def pose_exp_net(tgt_image, src_image_stack, do_exp=True, is_training=True):
     inputs = tf.concat([tgt_image, src_image_stack], axis=3)
     H = inputs.get_shape()[1].value
     W = inputs.get_shape()[2].value
-    num_source = int(src_image_stack.get_shape()[3].value//3)
+    num_source = int(src_image_stack.get_shape()[3].value//4)
     with tf.variable_scope('pose_exp_net') as sc:
         end_points_collection = sc.original_name_scope + '_end_points'
         with slim.arg_scope([slim.conv2d, slim.conv2d_transpose],
