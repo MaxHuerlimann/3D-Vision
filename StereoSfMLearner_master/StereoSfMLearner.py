@@ -5,8 +5,8 @@ import math
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-from RGBDdata_loader import DataLoader
-from RGBDposenet import pose_exp_net
+from data_loader import DataLoader
+from posenet import pose_exp_net
 from gcnet import disp_net
 from utils import *
 
@@ -15,7 +15,7 @@ class SfMLearner(object):
     def __init__(self):
         pass
     
-    def build_train_graph(self, image_seq_2, image_seq_3, raw_cam_vec_2, raw_cam_vec_3, pred_depths_rgbd, which_img):
+    def build_train_graph(self, image_seq_2, image_seq_3, gcnet_img_2, gcnet_img_3, raw_cam_vec_2, raw_cam_vec_3, pred_depths_rgbd, which_img):
         print('Train graph is getting built')
         opt = self.opt
         loader = DataLoader(opt.dataset_dir,
@@ -27,12 +27,15 @@ class SfMLearner(object):
 
         with tf.name_scope("data_unpacking"):
             print('Choose gcnet image')
-            image_seq_2 = self.preprocess_image(image_seq_2)
-            image_seq_3 = self.preprocess_image(image_seq_3)
-            gcnet_img_2 = loader.unpack_image_sequence_gcnet(image_seq_2, opt.img_height, opt.img_width, opt.num_source, which_img)
-            gcnet_img_3 = loader.unpack_image_sequence_gcnet(image_seq_3, opt.img_height, opt.img_width, opt.num_source, which_img)
-            image_seq_2 = self.deprocess_image(image_seq_2)
-            image_seq_3 = self.deprocess_image(image_seq_3)
+#            image_seq_2 = self.preprocess_image(image_seq_2)
+#            image_seq_3 = self.preprocess_image(image_seq_3)
+#            gcnet_img_2 = loader.unpack_image_sequence_gcnet(image_seq_2, opt.img_height, opt.img_width, opt.num_source, which_img)
+#            gcnet_img_3 = loader.unpack_image_sequence_gcnet(image_seq_3, opt.img_height, opt.img_width, opt.num_source, which_img)
+#            image_seq_2 = self.deprocess_image(image_seq_2)
+#            image_seq_3 = self.deprocess_image(image_seq_3)
+            gcnet_img_2 =self.preprocess_image(gcnet_img_2)
+            gcnet_img_3 =self.preprocess_image(gcnet_img_3)
+
 
         # Depth prediction with gcnet 
         with tf.name_scope("depth_prediction"):
@@ -167,6 +170,8 @@ class SfMLearner(object):
                                               self.global_step+1)
 
         # Collect tensors that are useful later (e.g. tf summary)
+        self.gcnet_img_2 = gcnet_img_2
+        self.gcnet_img_3 = gcnet_img_3
         self.pred_depth_gcnet = pred_depth_gcnet
         self.pred_depth = pred_depth
         self.pred_poses = pred_poses
@@ -219,9 +224,11 @@ class SfMLearner(object):
         tf.summary.scalar("pixel_loss", self.pixel_loss)
         tf.summary.scalar("smooth_loss", self.smooth_loss)
         tf.summary.scalar("exp_loss", self.exp_loss)
+#        tf.summary.image('gcnet_tgt_image_2', self.deprocess_image(self.gcnet_img_2))
+#        tf.summary.image('gcnet_tgt_image_3', self.deprocess_image(self.gcnet_img_3))
         for i in range(opt.num_source):
             tf.summary.image('source_depth_image_%d' % i,
-                    self.deprocess_image(self.src_image_stack_depth[:, :, :, i:(i+1)]))
+                    1./self.src_image_stack_depth[:, :, :, i:(i+1)])
         for s in range(opt.num_scales):
             tf.summary.histogram("scale%d_depth" % s, self.pred_depth[s])
             pred_depth_sum = tf.expand_dims(self.pred_depth[s],0)
@@ -262,19 +269,21 @@ class SfMLearner(object):
         tf.reset_default_graph()
         opt.num_source = opt.seq_length - 1
         # TODO: currently fixed to 1, as GCNet doesn't include multiscales
-        opt.num_scales = 1
+        opt.num_scales = 4
         self.opt = opt
 
         # Initialize placeholders
         image_seq_2 = tf.placeholder(tf.float32,shape=(1,opt.img_height,opt.seq_length*opt.img_width,3))
         image_seq_3 = tf.placeholder(tf.float32,shape=(1,opt.img_height,opt.seq_length*opt.img_width,3))
+        gcnet_img_2 = tf.placeholder(tf.uint8, shape=(1, opt.img_height, opt.img_width,3))
+        gcnet_img_3 = tf.placeholder(tf.uint8, shape=(1, opt.img_height, opt.img_width,3))
         cam_vec_2 = tf.placeholder(tf.float32, shape=(9))
         cam_vec_3 = tf.placeholder(tf.float32, shape=(9))
         pred_depths_input = tf.placeholder(tf.float32,shape=(opt.seq_length, opt.img_height,opt.img_width))
         which_img = tf.placeholder(tf.int32,shape=())
         
         # Build the graph
-        self.build_train_graph(image_seq_2, image_seq_3, cam_vec_2, cam_vec_3, pred_depths_input, which_img)
+        self.build_train_graph(image_seq_2, image_seq_3, gcnet_img_2, gcnet_img_3, cam_vec_2, cam_vec_3, pred_depths_input, which_img)
         self.collect_summaries()      
         print('graph built')
         
@@ -327,11 +336,11 @@ class SfMLearner(object):
             start_time = time.time()
             for step in range(1, opt.max_steps):
                 # Loading the image sequence
-                images_l, images_r = gc_dataloader.load_gcnet_img(file_paths_2[(step-1)%num_files], file_paths_3[(step-1)%num_files])
+                image_sequence_left, image_sequence_right = gc_dataloader.load_gcnet_img(file_paths_2[(step-1)%num_files], file_paths_3[(step-1)%num_files])
                 raw_cam_vec_2 = gc_dataloader.load_raw_cam_vec(cam_paths_2[(step-1)%num_files])
                 raw_cam_vec_3 = gc_dataloader.load_raw_cam_vec(cam_paths_3[(step-1)%num_files])
-                images_l=np.expand_dims(images_l,axis=0).astype('float32')
-                images_r=np.expand_dims(images_r,axis=0).astype('float32')
+                image_sequence_left = np.expand_dims(image_sequence_left, axis=0)
+                image_sequence_right = np.expand_dims(image_sequence_right, axis=0)
                 
                 # Running gcnet for all the pictures in the sequence
                 fetches_gcnet = { "pred_depth_gcnet": self.pred_depth_gcnet}
@@ -339,18 +348,22 @@ class SfMLearner(object):
                 dummy_depths = np.zeros((opt.seq_length, opt.img_height, opt.img_width), dtype=np.float32)
                 pred_depths_feed = []
                 for src in range(opt.seq_length):
+                    gcnet_img_left = gc_dataloader.unpack_image_sequence_gcnet(image_sequence_left, opt.img_height, opt.img_width, opt.num_source, src)
+                    gcnet_img_right = gc_dataloader.unpack_image_sequence_gcnet(image_sequence_right, opt.img_height, opt.img_width, opt.num_source, src)
                     feed_dict_gcnet = {
-                            image_seq_2: images_l,
-                            image_seq_3: images_r,
+                            image_seq_2: image_sequence_left,
+                            image_seq_3: image_sequence_right,
+                            gcnet_img_2: gcnet_img_left,
+                            gcnet_img_3: gcnet_img_right,
                             cam_vec_2: raw_cam_vec_2,
                             cam_vec_3: raw_cam_vec_3,
                             pred_depths_input: dummy_depths,
                             which_img: src}
                     results_gcnet = sess.run(fetches_gcnet, feed_dict=feed_dict_gcnet)
-                    print('results_gcnet shape: ' + str(results_gcnet["pred_depth_gcnet"].shape))
+#                    print('results_gcnet shape: ' + str(results_gcnet["pred_depth_gcnet"].shape))
                     pred_depths_feed.append(results_gcnet["pred_depth_gcnet"])
                 pred_depths_feed = np.stack(pred_depths_feed,axis=0)
-                print('pred_depths_feed shape: ' + str(pred_depths_feed.shape))
+#                print('pred_depths_feed shape: ' + str(pred_depths_feed.shape))
                 
                 # Running posenet
                 fetches = {
@@ -363,8 +376,10 @@ class SfMLearner(object):
                     fetches["loss"] = self.total_loss
                     fetches["summary"] = sv.summary_op
                 feed_dict_posenet = {
-                        image_seq_2: images_l,
-                        image_seq_3: images_r,
+                        image_seq_2: image_sequence_left,
+                        image_seq_3: image_sequence_right,
+                        gcnet_img_2: gcnet_img_left,
+                        gcnet_img_3: gcnet_img_right,
                         cam_vec_2: raw_cam_vec_2,
                         cam_vec_3: raw_cam_vec_3,
                         pred_depths_input: pred_depths_feed,

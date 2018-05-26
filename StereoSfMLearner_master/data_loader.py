@@ -228,28 +228,27 @@ class DataLoader(object):
     
     def unpack_image_sequence_gcnet(self, image_seq, img_height, img_width, num_source, which_img):
         # Implements cases to dynamically slice the sequence tensor, depending on sequence length
-        def f0(): return tf.constant(0)
-        def f1(): return tf.constant(1)
-        def f2(): return tf.constant(2)
-        def f3(): return tf.constant(3)
-        def f4(): return tf.constant(4)
-        img_idx = tf.case({tf.equal(which_img, tf.constant(0)): f0,
-            tf.equal(which_img, tf.constant(1)): f1,
-            tf.equal(which_img, tf.constant(2)): f2,
-            tf.equal(which_img, tf.constant(3)): f3,
-            tf.equal(which_img, tf.constant(4)): f4})
-        tgt_start_idx = tf.cast(img_width * img_idx, tf.int32)
-        print(image_seq.get_shape()) 
-        print(tgt_start_idx)
-        tgt_image = tf.slice(image_seq, 
-                             [0, 0, tgt_start_idx, 0], 
-                             [-1, -1, img_width, -1])
+#        def f0(): return tf.constant(0)
+#        def f1(): return tf.constant(1)
+#        def f2(): return tf.constant(2)
+#        def f3(): return tf.constant(3)
+#        def f4(): return tf.constant(4)
+#        img_idx = tf.case({tf.equal(which_img, tf.constant(0)): f0,
+#            tf.equal(which_img, tf.constant(1)): f1,
+#            tf.equal(which_img, tf.constant(2)): f2,
+#            tf.equal(which_img, tf.constant(3)): f3,
+#            tf.equal(which_img, tf.constant(4)): f4})
+#        tgt_start_idx = tf.cast(img_width * img_idx, tf.int32)
+        tgt_start_idx = int(img_width * which_img)
+#        print(image_seq.get_shape()) 
+#        print(tgt_start_idx)
+        tgt_image = image_seq[:, :, tgt_start_idx:tgt_start_idx + img_width, :] 
         return tgt_image
     
     def load_gcnet_img(self, file_path_left, file_path_right):
-        img_seq_left = cv2.imread(file_path_left)
+        img_seq_left = cv2.imread(file_path_left, 1)
         img_seq_left = cv2.cvtColor(img_seq_left, cv2.COLOR_BGR2RGB)
-        img_seq_right = cv2.imread(file_path_right)
+        img_seq_right = cv2.imread(file_path_right, 1)
         img_seq_right = cv2.cvtColor(img_seq_right, cv2.COLOR_BGR2RGB)
         return img_seq_left, img_seq_right
     
@@ -334,9 +333,8 @@ class DataLoader(object):
         depth_augm = tf.cast(tf.squeeze(depth_augm), dtype=tf.float32)
         tgt_depth_augm_scaled = []
         tgt_depth_augm_scaled.append(depth_augm[self.num_source//2])
-        tgt_depth_augm_scaled.append(self.scale_down(tgt_depth_augm_scaled[0], 2))
-        tgt_depth_augm_scaled.append(self.scale_down(tgt_depth_augm_scaled[1], 2))
-        tgt_depth_augm_scaled.append(self.scale_down(tgt_depth_augm_scaled[2], 2))
+        for i in range(3):
+            tgt_depth_augm_scaled.append(self.scale_down(tgt_depth_augm_scaled[i], 2))
 
         return tgt_image_2, src_image_stack_2, intrinsics_2, depth_augm, tgt_depth_augm_scaled
     
