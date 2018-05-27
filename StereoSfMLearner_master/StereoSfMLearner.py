@@ -1,12 +1,13 @@
 from __future__ import division
 import os
+import cv2
 import time
 import math
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-from data_loader import DataLoader
-from posenet import pose_exp_net
+from RGBDdata_loader import DataLoader
+from RGBDposenet import pose_exp_net
 from gcnet import disp_net
 from utils import *
 
@@ -27,12 +28,6 @@ class SfMLearner(object):
 
         with tf.name_scope("data_unpacking"):
             print('Choose gcnet image')
-#            image_seq_2 = self.preprocess_image(image_seq_2)
-#            image_seq_3 = self.preprocess_image(image_seq_3)
-#            gcnet_img_2 = loader.unpack_image_sequence_gcnet(image_seq_2, opt.img_height, opt.img_width, opt.num_source, which_img)
-#            gcnet_img_3 = loader.unpack_image_sequence_gcnet(image_seq_3, opt.img_height, opt.img_width, opt.num_source, which_img)
-#            image_seq_2 = self.deprocess_image(image_seq_2)
-#            image_seq_3 = self.deprocess_image(image_seq_3)
             gcnet_img_2 =self.preprocess_image(gcnet_img_2)
             gcnet_img_3 =self.preprocess_image(gcnet_img_3)
 
@@ -112,7 +107,7 @@ class SfMLearner(object):
                     # Inverse warp the source image to the target image frame
                     curr_proj_image = projective_inverse_warp(
                         curr_src_image_stack[:,:,:,3*i:3*(i+1)], 
-                        tf.expand_dims(depth_tgt_image, 0), 
+                        tf.expand_dims(pred_depth[s],0), 
                         pred_poses[:,i,:], 
                         intrinsics_2[:,s,:,:])
                     curr_proj_error = tf.abs(curr_proj_image - curr_tgt_image)
@@ -419,20 +414,44 @@ class SfMLearner(object):
         self.pred_depth = pred_depth
         self.depth_epts = depth_net_endpoints
 
-    def build_pose_test_graph(self):
+    def build_pose_test_graph(self, opt):
+        # Define placeholders
         input_uint8 = tf.placeholder(tf.uint8, [self.batch_size, 
             self.img_height, self.img_width * self.seq_length, 3], 
             name='raw_input')
+        gcnet_img_2 = tf.placeholder(tf.uint8, shape=(1, opt.img_height, opt.img_width,3), name='raw_gcnet_input_left')
+        gcnet_img_3 = tf.placeholder(tf.uint8, shape=(1, opt.img_height, opt.img_width,3), name='raw_gcnet_input_right')
+        pred_depths_input = tf.placeholder(tf.float32,shape=(opt.seq_length, opt.img_height,opt.img_width))
         input_mc = self.preprocess_image(input_uint8)
-        loader = DataLoader()
+        gcnet_img_2 = self.preprocess_image(gcnet_img_2)
+        gcnet_img_3 = self.preprocess_image(gcnet_img_3)
+
+        # Unpack image sequence
+        loader = DataLoader(num_source=self.num_source)
         tgt_image, src_image_stack = \
             loader.batch_unpack_image_sequence(
-                input_mc, self.img_height, self.img_width, self.num_source)
+         input_mc, self.img_height, self.img_width, self.num_source)
+
+        # Depth prediction with gcnet 
+        with tf.name_scope("depth_prediction"):
+            print('Depth prediction')
+            pred_disp, depth_net_endpoints = disp_net(gcnet_img_2 ,gcnet_img_3, opt.max_disparity)
+            pred_depth_gcnet = 1./pred_disp
+
+        with tf.name_scope("rgbd_emulation"):
+            tgt_image, src_image_stack, _ = loader.stack_rgbd(tgt_image, src_image_stack, pred_depths_input)
+
         with tf.name_scope("pose_prediction"):
             pred_poses, _, _ = pose_exp_net(
                 tgt_image, src_image_stack, do_exp=False, is_training=False)
-            self.inputs = input_uint8
-            self.pred_poses = pred_poses
+
+        # save variables for feed and fetches at inference
+        self.pred_depth_gcnet = pred_depth_gcnet
+        self.inputs = {'input_uint8': input_uint8,
+                'gcnet_img_2': gcnet_img_2,
+                'gcnet_img_3': gcnet_img_3,
+                'pred_depths_input': pred_depths_input}
+        self.pred_poses = pred_poses
 
     def preprocess_image(self, image):
         # Assuming input image is uint8
@@ -445,13 +464,12 @@ class SfMLearner(object):
         return tf.image.convert_image_dtype(image, dtype=tf.uint8)
 
     def setup_inference(self, 
-                        img_height,
-                        img_width,
+                        FLAGS,
                         mode,
                         seq_length=3,
                         batch_size=1):
-        self.img_height = img_height
-        self.img_width = img_width
+        self.img_height = FLAGS.img_height
+        self.img_width = FLAGS.img_width
         self.mode = mode
         self.batch_size = batch_size
         if self.mode == 'depth':
@@ -459,15 +477,44 @@ class SfMLearner(object):
         if self.mode == 'pose':
             self.seq_length = seq_length
             self.num_source = seq_length - 1
-            self.build_pose_test_graph()
+            self.build_pose_test_graph(FLAGS)
 
-    def inference(self, inputs, sess, mode='depth'):
+    def inference(self, input_sequence_2, input_sequence_3, sess, opt, mode='depth'):
         fetches = {}
         if mode == 'depth':
             fetches['depth'] = self.pred_depth
-        if mode == 'pose':
+        if mode == 'pose': 
+            gc_dataloader = DataLoader(opt.dataset_dir,
+                            opt.batch_size,
+                            opt.img_height,
+                            opt.img_width,
+                            opt.num_source,
+                            opt.num_scales)
+            # Running gcnet for all the pictures in the sequence
+            fetches_gcnet = { "pred_depth_gcnet": self.pred_depth_gcnet}
+            # Dummy array for feed_dict
+            dummy_depths = np.zeros((opt.seq_length, opt.img_height, opt.img_width), dtype=np.float32)
+            pred_depths_feed = []
+            for src in range(opt.seq_length):
+                gcnet_img_left = gc_dataloader.unpack_image_sequence_gcnet(input_sequence_2, opt.img_height, opt.img_width, opt.num_source, src)
+                gcnet_img_right = gc_dataloader.unpack_image_sequence_gcnet(input_sequence_3, opt.img_height, opt.img_width, opt.num_source, src)
+                feed_dict_gcnet = {
+                        self.inputs['input_uint8']: input_sequence_2,
+                        self.inputs['gcnet_img_2']: gcnet_img_left,
+                        self.inputs['gcnet_img_3']: gcnet_img_right,
+                        self.inputs['pred_depths_input']: dummy_depths}
+                results_gcnet = sess.run(fetches_gcnet, feed_dict=feed_dict_gcnet)
+                pred_depths_feed.append(results_gcnet["pred_depth_gcnet"])
+            pred_depths_feed = np.stack(pred_depths_feed,axis=0)
+            # Running posenet
+            feed_dict_posenet = {
+                    self.inputs['input_uint8']: input_sequence_2,
+                    self.inputs['gcnet_img_2']: gcnet_img_left,
+                    self.inputs['gcnet_img_3']: gcnet_img_right,
+                    self.inputs['pred_depths_input']: pred_depths_feed}
+
             fetches['pose'] = self.pred_poses
-        results = sess.run(fetches, feed_dict={self.inputs:inputs})
+        results = sess.run(fetches, feed_dict=feed_dict_posenet)
         return results
 
     def save(self, sess, checkpoint_dir, step):

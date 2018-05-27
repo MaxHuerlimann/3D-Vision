@@ -227,21 +227,7 @@ class DataLoader(object):
         return intrinsics_mscale
     
     def unpack_image_sequence_gcnet(self, image_seq, img_height, img_width, num_source, which_img):
-        # Implements cases to dynamically slice the sequence tensor, depending on sequence length
-#        def f0(): return tf.constant(0)
-#        def f1(): return tf.constant(1)
-#        def f2(): return tf.constant(2)
-#        def f3(): return tf.constant(3)
-#        def f4(): return tf.constant(4)
-#        img_idx = tf.case({tf.equal(which_img, tf.constant(0)): f0,
-#            tf.equal(which_img, tf.constant(1)): f1,
-#            tf.equal(which_img, tf.constant(2)): f2,
-#            tf.equal(which_img, tf.constant(3)): f3,
-#            tf.equal(which_img, tf.constant(4)): f4})
-#        tgt_start_idx = tf.cast(img_width * img_idx, tf.int32)
         tgt_start_idx = int(img_width * which_img)
-#        print(image_seq.get_shape()) 
-#        print(tgt_start_idx)
         tgt_image = image_seq[:, :, tgt_start_idx:tgt_start_idx + img_width, :] 
         return tgt_image
     
@@ -277,10 +263,6 @@ class DataLoader(object):
         print('tgt_image shape: ' + str(tgt_image.get_shape()))
         print('src_image_stack shape: ' + str(src_image_stack.get_shape()))
 
-        # Get number of channels
-#        num_channels = tgt_image.get_shape()[-1].value
-#        print('Number of channels: ' + str(num_channels))
-
         # Load camera intrinsics
         intrinsics = tf.reshape(raw_cam_vec, [3, 3])
         intrinsics = tf.expand_dims(intrinsics, 0)
@@ -308,7 +290,7 @@ class DataLoader(object):
         file_list = self.format_file_list(self.dataset_dir, 'train', 2)
         self.steps_per_epoch = int(
             len(file_list['image_file_list'])//1)
-        return tgt_image, src_image_stack, intrinsics, depths
+        return tgt_image, src_image_stack, intrinsics, depths_augmented
 
     def scale_down(self, tensor, factor):
         print(tensor)
@@ -324,13 +306,10 @@ class DataLoader(object):
     
     def process_img_seq(self, image_seq, raw_cam_vec, depth):
         seed = random.randint(1,2**31 - 1)
-        # Expand depth tensor from shape [h, w] to [1,h,w,1], so it can be augmented
-        print(depth.get_shape())
-#        depth = tf.expand_dims(tf.expand_dims(depth, 0), -1)
         # Augment data
         tgt_image_2, src_image_stack_2, intrinsics_2, depth_augm = self.augment_new(image_seq, raw_cam_vec, depth, seed)
         # Scale and recast depth to float
-        depth_augm = tf.cast(tf.squeeze(depth_augm), dtype=tf.float32)
+        # depth_augm = tf.cast(tf.squeeze(depth_augm), dtype=tf.float32)
         tgt_depth_augm_scaled = []
         tgt_depth_augm_scaled.append(depth_augm[self.num_source//2])
         for i in range(3):
@@ -342,8 +321,9 @@ class DataLoader(object):
     def stack_rgbd(self, tgt_img, src_img_stack, depths_all):
         # Unpack image depths
 #        tgt_img, src_img_stack = self.batch_unpack_image_sequence(image_all, self.img_height, self.img_width, self.num_source)
-        depth_tgt_img = depths_all[0,:,:]
-        depth_src_img_all = depths_all[1:,:,:]
+        tgt_start_idx = self.num_source//2
+        depth_tgt_img = depths_all[tgt_start_idx,:,:]
+        depth_src_img_all = tf.concat([depths_all[:tgt_start_idx,:,:], depths_all[tgt_start_idx+1:,:,:]], axis=0)
         print('depths shape (stack rgbd): ' + str(depths_all.get_shape()))
         # Stack target imame depth on RGB image
         depth_tgt_img = tf.expand_dims(tf.expand_dims(depth_tgt_img, 0), -1)
