@@ -27,10 +27,9 @@ class SfMLearner(object):
                             opt.num_scales)
 
         with tf.name_scope("data_unpacking"):
-            print('Choose gcnet image')
+            print('preprocess gcnet images')
             gcnet_img_2 =self.preprocess_image(gcnet_img_2)
             gcnet_img_3 =self.preprocess_image(gcnet_img_3)
-
 
         # Depth prediction with gcnet 
         with tf.name_scope("depth_prediction"):
@@ -38,6 +37,7 @@ class SfMLearner(object):
             pred_disp, depth_net_endpoints = disp_net(gcnet_img_2 ,gcnet_img_3, opt.max_disparity)
             pred_depth_gcnet = 1./pred_disp
 
+        # Data augmentation for better training performance
         with tf.name_scope("data_augmentation"):
             print('Data is being augmented')
             tgt_image_augmented, src_image_stack_augmented, intrinsic, pred_depths_augmented, pred_depth = loader.process_img_seq(image_seq_2, raw_cam_vec_2, pred_depths_rgbd)
@@ -46,9 +46,11 @@ class SfMLearner(object):
             src_image_stack_2 = self.preprocess_image(src_image_stack_augmented)
             intrinsics_2 = intrinsic
 
+        # Stacking of depth maps onto RGB images
         with tf.name_scope("rgbd_emulation"):
             tgt_image_2, src_image_stack_2, depth_tgt_image = loader.stack_rgbd(tgt_image_2, src_image_stack_2, pred_depths_augmented)
             
+        # Pose prediction with original posenet
         with tf.name_scope("pose_and_explainability_prediction"):
             print('Pose prediction started')
             pred_poses, pred_exp_logits, pose_exp_net_endpoints = \
@@ -80,7 +82,6 @@ class SfMLearner(object):
             exp_loss = 0
             smooth_loss = 0
             tgt_image_all = []
-#            tgt_image_all_3 = []
             src_image_stack_all = []
             proj_image_stack_all = []
             proj_error_stack_all = []
@@ -94,11 +95,10 @@ class SfMLearner(object):
                 # according scale.
                 curr_tgt_image = tf.image.resize_area(tgt_image_2, 
                     [int(opt.img_height/(2**s)), int(opt.img_width/(2**s))])
-#                curr_tgt_image_3 = tf.image.resize_area(tgt_image_3, 
-#                    [int(opt.img_height/(2**s)), int(opt.img_width/(2**s))])                
                 curr_src_image_stack = tf.image.resize_area(src_image_stack_2, 
                     [int(opt.img_height/(2**s)), int(opt.img_width/(2**s))])
 
+                print(pred_disp)
                 if opt.smooth_weight > 0:
                     smooth_loss += opt.smooth_weight/(2**s) * \
                         self.compute_smooth_loss(pred_disp[0][s])
@@ -142,7 +142,6 @@ class SfMLearner(object):
                             exp_mask_stack = tf.concat([exp_mask_stack, 
                                 tf.expand_dims(curr_exp[:,:,:,1], -1)], axis=3)
                 tgt_image_all.append(curr_tgt_image)
-#                tgt_image_all_3.append(curr_tgt_image_3)
                 src_image_stack_all.append(curr_src_image_stack)
                 proj_image_stack_all.append(proj_image_stack)
                 proj_error_stack_all.append(proj_error_stack)
@@ -165,8 +164,6 @@ class SfMLearner(object):
                                               self.global_step+1)
 
         # Collect tensors that are useful later (e.g. tf summary)
-        self.gcnet_img_2 = gcnet_img_2
-        self.gcnet_img_3 = gcnet_img_3
         self.pred_depth_gcnet = pred_depth_gcnet
         self.pred_depth = pred_depth
         self.pred_poses = pred_poses
@@ -176,7 +173,6 @@ class SfMLearner(object):
         self.exp_loss = exp_loss
         self.smooth_loss = smooth_loss
         self.tgt_image_all = tgt_image_all
-#        self.tgt_image_all_3 = tgt_image_all_3
         self.src_image_stack_all = src_image_stack_all
         self.proj_image_stack_all = proj_image_stack_all
         self.proj_error_stack_all = proj_error_stack_all
@@ -219,8 +215,6 @@ class SfMLearner(object):
         tf.summary.scalar("pixel_loss", self.pixel_loss)
         tf.summary.scalar("smooth_loss", self.smooth_loss)
         tf.summary.scalar("exp_loss", self.exp_loss)
-#        tf.summary.image('gcnet_tgt_image_2', self.deprocess_image(self.gcnet_img_2))
-#        tf.summary.image('gcnet_tgt_image_3', self.deprocess_image(self.gcnet_img_3))
         for i in range(opt.num_source):
             tf.summary.image('source_depth_image_%d' % i,
                     1./self.src_image_stack_depth[:, :, :, i:(i+1)])
@@ -231,8 +225,6 @@ class SfMLearner(object):
             tf.summary.image('scale%d_disparity_image' % s, 1./pred_depth_sum)
             tf.summary.image('scale%d_target_image' % s, \
                              self.deprocess_image(self.tgt_image_all[s]))
-#            tf.summary.image('scale%d_target_image_3' % s, \
-#                             self.deprocess_image(self.tgt_image_all_3[s]))
             for i in range(opt.num_source):
                 if opt.explain_reg_weight > 0:
                     tf.summary.image(
@@ -291,6 +283,9 @@ class SfMLearner(object):
         gcnet_var = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="stereo_network")
         self.gcnet_saver = tf.train.Saver(var_list = gcnet_var)
         
+        posenet_var = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope="pose_exp_net")
+        self.posenet_saver = tf.train.Saver(var_list = posenet_var)
+
         sv = tf.train.Supervisor(logdir=opt.checkpoint_dir, 
                                  save_summaries_secs=0, 
                                  saver=None)
@@ -306,12 +301,11 @@ class SfMLearner(object):
 #                print(var.name)
             print("parameter_count =", sess.run(parameter_count))
             if opt.continue_train:
-                if opt.init_checkpoint_file is None:
-                    checkpoint = tf.train.latest_checkpoint(opt.checkpoint_dir)
-                else:
-                    checkpoint = opt.init_checkpoint_file
-                print("Resume training from previous checkpoint: %s" % checkpoint)
-#                self.saver.restore(sess, checkpoint)
+                posenet_restore_path=tf.train.latest_checkpoint(opt.posenet_model_dir)
+                print("Restore Path: ", posenet_restore_path)
+                print("posenet_model_dir: ", opt.posenet_model_dir)
+                print("Resume training from previous checkpoint: ")
+                self.posenet_saver.restore(sess, posenet_restore_path)
             print('Checkpoints checked')
             
             # Load file lists
@@ -475,8 +469,8 @@ class SfMLearner(object):
         if self.mode == 'depth':
             self.build_depth_test_graph()
         if self.mode == 'pose':
-            self.seq_length = seq_length
-            self.num_source = seq_length - 1
+            self.seq_length = FLAGS.seq_length
+            self.num_source = self.seq_length - 1
             self.build_pose_test_graph(FLAGS)
 
     def inference(self, input_sequence_2, input_sequence_3, sess, opt, mode='depth'):
