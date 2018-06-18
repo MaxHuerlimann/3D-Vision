@@ -4,7 +4,7 @@ This code enhances the existing code from the [SfMLearner](https://github.com/ti
 
 [Tinghui Zhou](https://people.eecs.berkeley.edu/~tinghuiz/), [Matthew Brown](http://matthewalunbrown.com/research/research.html), [Noah Snavely](http://www.cs.cornell.edu/~snavely/), [David G. Lowe](http://www.cs.ubc.ca/~lowe/home.html)
 
-The disparity estimation was replaced with an implementation of [GC-Net](https://arxiv.org/pdf/1703.04309.pdf) Alex Kendall et al. The implementation itself was written by Jiaxiong Qiu, based off of an implementation by 
+The disparity estimation was replaced with an implementation of [GC-Net](https://arxiv.org/pdf/1703.04309.pdf) Alex Kendall et al. The implementation itself was written by Jiaxiong Qiu, based off of an implementation by [Lin Hung Shi](https://github.com/LinHungShi/GCNetwork).
 
 Unsupervised Ego-Motion from video
 
@@ -25,8 +25,11 @@ The network was trained on the ETH Leonhard cluster.
 
 ## Code Contained
 |Folder:|Content:|
+|-------|--------|
 |StereoSfMLearner|The main code developed by us. Code handling the main processes (main.py and utils.py), definition of the networks, data loading, training and testing|
+|-------|--------|
 |root/data/|Code for putting the image files into desired sequences for training, creating text files for intrinsics and lists of the files for data loading later on|
+|-------|--------|
 |gcnet|Implementation of the GC-Net|
 
 ## Preparing Training Data
