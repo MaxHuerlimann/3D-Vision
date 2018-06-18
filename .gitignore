@@ -1,2 +1,4 @@
 /.spyproject/
 /StereoSfMLearner_master/checkpoints/
+/StereoSfMLearner_master/__pycache__/
+/gcnet_qjx/__pycache__/

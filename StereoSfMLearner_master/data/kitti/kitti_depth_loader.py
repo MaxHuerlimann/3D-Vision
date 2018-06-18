@@ -2,10 +2,17 @@ from __future__ import division
 import numpy as np
 from glob import glob
 import os
-import scipy.misc
-import cv2
+import skimage.transform
+# import sys
+# sys.path.append('../../')
+# from utils.misc import *
 
-class kitti_odom_loader(object):
+# Maximum disparity of gcnet for normalizing numpy float
+MAX_DISPARITY = 192
+
+class kitti_depth_loader(object):
+    """ Class responsible for loading precalculated depths
+    """
     def __init__(self,
                  dataset_dir,
                  img_height=128,
@@ -24,9 +31,8 @@ class kitti_odom_loader(object):
     def collect_test_frames(self):
         self.test_frames = []
         for seq in self.test_seqs:
-            seq_dir = os.path.join(self.dataset_dir, 'sequences', '%.2d' % seq)
-            img_dir = os.path.join(seq_dir, 'image_2')
-            N = len(glob(img_dir + '/*.png'))
+            img_dir = os.path.join(self.dataset_dir, '%.2d' % seq)
+            N = len(glob(img_dir + '/*.npy'))
             for n in range(N):
                 self.test_frames.append('%.2d %.6d' % (seq, n))
         self.num_test = len(self.test_frames)
@@ -35,9 +41,8 @@ class kitti_odom_loader(object):
         # adding info for both cameras
         self.train_frames = []
         for seq in self.train_seqs:
-            seq_dir = os.path.join(self.dataset_dir, 'sequences', '%.2d' % seq)
-            img_dir = os.path.join(seq_dir, 'image_2')
-            N = len(glob(img_dir + '/*.png'))
+            img_dir = os.path.join(self.dataset_dir, '%.2d' % seq)
+            N = len(glob(img_dir + '/*.npy'))
             for n in range(N):
                 self.train_frames.append('%.2d %.6d' % (seq, n))
         self.num_train = len(self.train_frames)
@@ -63,20 +68,17 @@ class kitti_odom_loader(object):
             curr_idx = tgt_idx + o
             curr_drive, curr_frame_id = frames[curr_idx].split(' ')
             curr_img = self.load_image(curr_drive, curr_frame_id)
-            if o == 0:
-                zoom_y = self.img_height/curr_img.shape[0]
-                zoom_x = self.img_width/curr_img.shape[1]
-            curr_img = scipy.misc.imresize(curr_img, (self.img_height, self.img_width))
+            # Normalize to values between -1 an 1
+            curr_img = curr_img/MAX_DISPARITY
+            curr_img = skimage.transform.resize(curr_img, (self.img_height, self.img_width))
+            curr_img = curr_img*MAX_DISPARITY
             image_seq.append(curr_img)
-        return image_seq, zoom_x, zoom_y
+        return image_seq
 
     def load_example(self, frames, tgt_idx, load_pose=False):
-        image_seq, zoom_x, zoom_y = self.load_image_sequence(frames, tgt_idx, self.seq_length)
+        image_seq = self.load_image_sequence(frames, tgt_idx, self.seq_length)
         tgt_drive, tgt_frame_id = frames[tgt_idx].split(' ')
-        intrinsics = self.load_intrinsics(tgt_drive, tgt_frame_id)
-        intrinsics = self.scale_intrinsics(intrinsics, zoom_x, zoom_y)        
         example = {}
-        example['intrinsics'] = intrinsics
         example['image_seq'] = image_seq
         example['folder_name'] = tgt_drive
         example['file_name'] = tgt_frame_id
@@ -91,40 +93,6 @@ class kitti_odom_loader(object):
         return example
 
     def load_image(self, drive, frame_id):
-        img_file = os.path.join(self.dataset_dir, 'sequences', '%s/image_2/%s.png' % (drive, frame_id))
-        img = cv2.imread(img_file)
+        img_file = os.path.join(self.dataset_dir, '%s/%s.npy' % (drive, frame_id))
+        img = np.load(img_file)
         return img
-
-    def load_intrinsics(self, drive, frame_id):
-        calib_file = os.path.join(self.dataset_dir, 'sequences', '%s/calib.txt' % drive)
-        proj_c2p, _ = self.read_calib_file(calib_file)
-        intrinsics = proj_c2p[:3, :3]
-        return intrinsics
-
-    def dump_file(self, dump_dir, example, image_seq):
-        dump_img_file = dump_dir + '/%s' % example['file_name']
-        np.save(dump_img_file, image_seq)
-
-    def read_calib_file(self, filepath, cid=2):
-        """Read in a calibration file and parse into a dictionary."""
-        with open(filepath, 'r') as f:
-            C = f.readlines()
-        def parseLine(L, shape):
-            data = L.split()
-            data = np.array(data[1:]).reshape(shape).astype(np.float32)
-            return data
-        proj_c2p = parseLine(C[cid], shape=(3,4))
-        proj_v2c = parseLine(C[-1], shape=(3,4))
-        filler = np.array([0, 0, 0, 1]).reshape((1,4))
-        proj_v2c = np.concatenate((proj_v2c, filler), axis=0)
-        return proj_c2p, proj_v2c
-
-    def scale_intrinsics(self,mat, sx, sy):
-        out = np.copy(mat)
-        out[0,0] *= sx
-        out[0,2] *= sx
-        out[1,1] *= sy
-        out[1,2] *= sy
-        return out
-
-
