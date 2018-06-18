@@ -27,9 +27,7 @@ The network was trained on the ETH Leonhard cluster.
 |Folder:|Content:|
 | ------- | -------- |
 |StereoSfMLearner|The main code developed by us. Code handling the main processes (main.py and utils.py), definition of the networks, data loading, training and testing|
-| ------- | -------- |
 |root/data/|Code for putting the image files into desired sequences for training, creating text files for intrinsics and lists of the files for data loading later on|
-| ------- | -------- |
 |gcnet|Implementation of the GC-Net|
 
 ## Preparing Training Data
