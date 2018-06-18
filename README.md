@@ -1,12 +1,12 @@
 # Stereo-SfMLearner
 
+Unsupervised Ego-Motion from video
+
 This code enhances the existing code from the [SfMLearner](https://github.com/tinghuiz/SfMLearner)
 
 [Tinghui Zhou](https://people.eecs.berkeley.edu/~tinghuiz/), [Matthew Brown](http://matthewalunbrown.com/research/research.html), [Noah Snavely](http://www.cs.cornell.edu/~snavely/), [David G. Lowe](http://www.cs.ubc.ca/~lowe/home.html)
 
 The disparity estimation was replaced with an implementation of [GC-Net](https://arxiv.org/pdf/1703.04309.pdf) Alex Kendall et al. The implementation itself was written by Jiaxiong Qiu, based off of an implementation by [Lin Hung Shi](https://github.com/LinHungShi/GCNetwork).
-
-Unsupervised Ego-Motion from video
 
 ## Prerequisites
 The code was written in python on Ubuntu 16.04
@@ -19,22 +19,28 @@ cudnn 7.1.2<br/>
 opencv 3.3.1<br/>
 scipy 1.0.1<br/>
 matplotlib 2.2.2<br/>
+scipy.misc 1.1.0<br/>
 scikit-image 0.13.1
 
 The network was trained on the ETH Leonhard cluster.
 
 ## Code Contained
+There are two different implementations. One is with both gcnet and posenet in one network while the other precalculates the depths for the whole dataset and feeds them to the posenet directly. The implementation with precalculated depths was used mainly as the training is faster and there is more flexibility in training the network (e.g. variable batch size)
+
 |Folder:|Content:|
 | ------- | -------- |
-|StereoSfMLearner|The main code developed by us. Code handling the main processes (main.py and utils.py), definition of the networks, data loading, training and testing|
-|root/data/|Code for putting the image files into desired sequences for training, creating text files for intrinsics and lists of the files for data loading later on|
+|StereoSfMLearner|The main code developed by us combining GC-Net and posent. Code handling the main processes (main.py and utils.py), definition of the networks, data loading, training and testing|
+|StereoSfMLearnerPrecalc|The main code developed by us using precalculated depths. Code handling the main processes (main.py and utils.py), definition of the networks, data loading, training and testing|
+|StereoSfMLearner*/data/|Code for putting the image files into desired sequences for training, creating text files for intrinsics and lists of the files for data loading later on|
+|StereoSfMLearner*/data/kitti/|The dataloader classes for preparing the training data.|
 |gcnet|Implementation of the GC-Net|
+|sampleimages|Sample images of the KITTI odometry dataset and corresponding estimated disparity maps|
 
 ## Preparing Training Data
 To train the network, the training data has to be formatted.
 
 First, download the [KITTI odometry](http://www.cvlibs.net/datasets/kitti/eval_odometry.php) dataset from [here](http://www.cvlibs.net/download.php?file=data_odometry_color.zip).
-The disparity maps have to be produced with the GC-Net code. This is done before the actual training to speed up the process, as the network for disparity is not being trained further. It will output 384x1280 maps.
+For the posenet only implementation, the disparity maps have to be produced with the GC-Net code beforehand. This is done before the actual training to speed up the process, as the network for disparity is not being trained further and allow bigger batch sizes than 1 (The GC-Net implementation only allows for batch size 1). It will output 384x1280 maps.
 ```bash
 python main.py --mode test --model_name 0429 --data_path /path/to/dataset/ --filenames_file /path/and/name/to/save/filelist/file/ --log_directory /where/to/save/logs/ --output_directory /path/to/save/depths/
 ```
@@ -49,7 +55,7 @@ To train the code the following command is used:
 ```bash
 python train.py --dataset_dir /path/to/formatted/image/sequences/ --depths_dir /path/to/formatted/depth/sequences/ --checkpoint_dir /path/to/save/checkpoints/ --img_width [image width] --img_height [image height] --batch_size [batch size] --seq_length [sequence length]
 ```
-In the train.py file the parameters for training can adapted.
+In the train.py file the parameters for training can adapted. Generally during training the cost oscillates quite heavily and overfits quickly, so smaller learning rates are adviced.
 
 ## Testing
 Code from the original implementation can be used to download groundtruth for the poses on the KITTI odometry dataset sequences 9 and 10
