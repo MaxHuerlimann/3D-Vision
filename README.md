@@ -9,18 +9,17 @@ This code enhances the existing code from the [SfMLearner](https://github.com/ti
 The disparity estimation was replaced with an implementation of [GC-Net](https://arxiv.org/pdf/1703.04309.pdf) Alex Kendall et al. The implementation itself was written by Jiaxiong Qiu, based off of an implementation by [Lin Hung Shi](https://github.com/LinHungShi/GCNetwork).
 
 ## Prerequisites
-The code was written in python on Ubuntu 16.04
+The code was written in python on Ubuntu 16.04 and the environment was managed with miniconda.
 
 These libraries and frameworks were used for this code:<br/>
 python 3.6.5<br/>
-Tensorflow 1.7.0<br/>
-CUDA 9.0<br/>
+Tensorflow 1.7.0 (pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.7.1-cp36-cp36m-linux_x86_64.whl)<br/>
+CUDA 9.0 (following https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html)<br/>
 cudnn 7.1.2<br/>
-opencv 3.3.1<br/>
-scipy 1.0.1<br/>
-matplotlib 2.2.2<br/>
-scipy.misc 1.1.0<br/>
-scikit-image 0.13.1
+opencv 3.3.1 (pip install opencv)<br/>
+scipy 1.1.0 (pip install scipy)<br/>
+matplotlib 2.2.2 (pip install matplotlib)<br/>
+scikit-image 0.13.1 (pip install scikit-image)
 
 The network was trained on the ETH Leonhard cluster.
 
@@ -29,7 +28,7 @@ There are two different implementations. One is with both gcnet and posenet in o
 
 |Folder:|Content:|
 | ------- | -------- |
-|StereoSfMLearner|The main code developed by us combining GC-Net and posent. Code handling the main processes (main.py and utils.py), definition of the networks, data loading, training and testing|
+|StereoSfMLearner|The main code developed by us combining GC-Net and posnet. Code handling the main processes (main.py and utils.py), definition of the networks, data loading, training and testing|
 |StereoSfMLearnerPrecalc|The main code developed by us using precalculated depths. Code handling the main processes (main.py and utils.py), definition of the networks, data loading, training and testing|
 |StereoSfMLearner*/data/|Code for putting the image files into desired sequences for training, creating text files for intrinsics and lists of the files for data loading later on|
 |StereoSfMLearner*/data/kitti/|The dataloader classes for preparing the training data.|
